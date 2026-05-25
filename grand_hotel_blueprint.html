@@ -98,6 +98,7 @@
             <div class="flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
                 <button id="btn-save" class="px-2.5 py-1 text-xs font-bold rounded bg-emerald-700 hover:bg-emerald-600 text-white transition-all" title="Save game">💾 Save</button>
                 <button id="btn-load" class="px-2.5 py-1 text-xs font-bold rounded bg-indigo-700 hover:bg-indigo-600 text-white transition-all" title="Load last save">📂 Load</button>
+                <button id="btn-new-game" class="px-2.5 py-1 text-xs font-bold rounded bg-rose-700 hover:bg-rose-600 text-white transition-all" title="Start a new game">🔄 New Game</button>
             </div>
         </div>
     </header>
@@ -418,11 +419,16 @@
                     <p class="text-xs text-slate-400">Instantly clean dirty checkout rooms automatically to allow new guest check-ins.</p>
                     <div class="flex items-center justify-between text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-850">
                         <span class="text-slate-400">Hiring Bonus: <strong class="text-emerald-400 font-semibold">$500</strong></span>
-                        <span class="text-slate-400">Wages: <strong class="text-rose-400 font-semibold">$4/sec</strong></span>
+                        <span class="text-slate-400">Wages: <strong class="text-rose-400 font-semibold">$2/sec</strong></span>
                     </div>
-                    <button onclick="hireStaff('housekeeper')" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
-                        <i class="fa-solid fa-plus"></i> Recruit Housekeeper
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="hireStaff('housekeeper')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
+                            <i class="fa-solid fa-plus"></i> Recruit
+                        </button>
+                        <button onclick="fireStaff('housekeeper')" class="flex-1 bg-rose-950 hover:bg-rose-900 text-rose-400 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-rose-800">
+                            <i class="fa-solid fa-minus"></i> Dismiss
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Construction Crew -->
@@ -445,11 +451,16 @@
                     <p class="text-xs text-slate-400">Construction speed increases by <strong class="text-slate-300">50%</strong> per hired builder.</p>
                     <div class="flex items-center justify-between text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-850">
                         <span class="text-slate-400">Hiring Bonus: <strong class="text-emerald-400 font-semibold">$800</strong></span>
-                        <span class="text-slate-400">Wages: <strong class="text-rose-400 font-semibold">$6/sec</strong></span>
+                        <span class="text-slate-400">Wages: <strong class="text-rose-400 font-semibold">$3/sec</strong></span>
                     </div>
-                    <button onclick="hireStaff('builder')" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
-                        <i class="fa-solid fa-plus"></i> Recruit Builder
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="hireStaff('builder')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
+                            <i class="fa-solid fa-plus"></i> Recruit
+                        </button>
+                        <button onclick="fireStaff('builder')" class="flex-1 bg-rose-950 hover:bg-rose-900 text-rose-400 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-rose-800">
+                            <i class="fa-solid fa-minus"></i> Dismiss
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Receptionist -->
@@ -474,9 +485,14 @@
                         <span class="text-slate-400">Hiring Bonus: <strong class="text-emerald-400 font-semibold">$400</strong></span>
                         <span class="text-slate-400">Wages: <strong class="text-rose-400 font-semibold">$3/sec</strong></span>
                     </div>
-                    <button onclick="hireStaff('receptionist')" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
-                        <i class="fa-solid fa-plus"></i> Recruit Receptionist
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="hireStaff('receptionist')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
+                            <i class="fa-solid fa-plus"></i> Recruit
+                        </button>
+                        <button onclick="fireStaff('receptionist')" class="flex-1 bg-rose-950 hover:bg-rose-900 text-rose-400 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-rose-800">
+                            <i class="fa-solid fa-minus"></i> Dismiss
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

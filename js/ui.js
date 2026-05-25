@@ -18,7 +18,21 @@ function simulationStep() {
         const count = state.staff[staffType];
         totalWages += count * CONSTANTS.staff[staffType].wage;
     }
-    state.cash = Math.max(0, state.cash - totalWages);
+
+    if (totalWages > 0 && state.cash < totalWages) {
+        // Can't cover this period's wages — fire all staff
+        const hadStaff = Object.values(state.staff).some(v => v > 0);
+        state.staff.housekeeper = 0;
+        state.staff.builder = 0;
+        state.staff.receptionist = 0;
+        state.walkers = state.walkers.filter(w => w.type === 'guest' || w.type === 'vip');
+        if (hadStaff) {
+            showToast('💸 Out of Funds!', 'Cannot pay wages — all staff have left. Re-hire when you have enough cash.', 'error');
+        }
+        totalWages = 0; // no wages this tick — staff are gone
+    } else {
+        state.cash = Math.max(0, state.cash - totalWages);
+    }
 
     // Estimate steady-state rent from currently occupied rooms
     // (actual cash arrives on checkout; this is the display estimate)
@@ -87,12 +101,12 @@ function simulationStep() {
         netEl.className = netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400';
     }
 
-    // Cash runway warning — fire at most once every 30 seconds
-    if (totalWages > 0 && state.cash < totalWages * 30) {
-        if (!simulationStep._warnedAt || (Date.now() - simulationStep._warnedAt) > 30000) {
+    // Low-cash warning — alert player before they can't cover wages
+    if (totalWages > 0 && state.cash < totalWages * 10) {
+        if (!simulationStep._warnedAt || (Date.now() - simulationStep._warnedAt) > 20000) {
             simulationStep._warnedAt = Date.now();
             const burnSecs = Math.max(0, Math.round(state.cash / totalWages));
-            showToast('⚠️ Low Cash!', `At current wages, you have ~${burnSecs}s of runway.`, 'warning');
+            showToast('⚠️ Low Cash!', `Only ~${burnSecs}s of wages left — staff will leave if you run out.`, 'warning');
         }
     }
 
@@ -254,6 +268,20 @@ window.buyMaterial = function(material, amount) {
     state.materials[material] += buyCount;
     AudioEngine.playCash();
     showToast("Transaction Approved", `Acquired ${buyCount} units of structural ${material}.`, "success");
+    updateUI();
+};
+
+window.fireStaff = function(staffType) {
+    if (state.staff[staffType] <= 0) {
+        showToast("No Staff to Dismiss", `You have no ${staffType}s on payroll.`, "warning");
+        return;
+    }
+    state.staff[staffType]--;
+    // Remove one walker of this type
+    const idx = state.walkers.findIndex(w => w.type === staffType);
+    if (idx !== -1) state.walkers.splice(idx, 1);
+    const wage = CONSTANTS.staff[staffType].wage;
+    showToast("Staff Dismissed", `${staffType} let go — saving $${wage}/sec in wages.`, "warning");
     updateUI();
 };
 
@@ -543,7 +571,7 @@ function spawnDefaultHousekeeper() {
     spawnWalker('housekeeper');
 }
 
-// Save / Load button handlers
+// Save / Load / New Game button handlers
 document.getElementById('btn-save')?.addEventListener('click', () => saveGame());
 document.getElementById('btn-load')?.addEventListener('click', () => {
     if (loadGame()) {
@@ -551,6 +579,28 @@ document.getElementById('btn-load')?.addEventListener('click', () => {
         populateUpgradeSelect();
         updateUI();
     }
+});
+document.getElementById('btn-new-game')?.addEventListener('click', () => {
+    if (!confirm('Start a new game? Your current progress will be lost.')) return;
+    deleteSave();
+    // Reset state to defaults
+    state.cash = 5000;
+    state.materials = { concrete: 50, wood: 35, steel: 15 };
+    state.marketPrices = { concrete: 20, wood: 12, steel: 60 };
+    state.staff = { housekeeper: 0, receptionist: 0, builder: 0 };
+    state.walkers = [];
+    state.particles = [];
+    state.gameSpeed = 1;
+    state.campaignActive = false;
+    state.campaignTimer = 0;
+    state.fpFloor = 1;
+    state.fpRoom = null;
+    initHotel();
+    spawnDefaultReceptionist();
+    spawnDefaultHousekeeper();
+    populateUpgradeSelect();
+    updateUI();
+    showToast('New Game', 'Your hotel has been reset. Good luck!', 'success');
 });
 
 // Initial launch loop
