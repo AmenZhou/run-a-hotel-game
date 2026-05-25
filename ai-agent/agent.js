@@ -133,18 +133,21 @@ The state snapshot includes an \`affordability\` object. NEVER choose an action 
 
 Return ONLY a valid JSON object — no markdown, no explanation outside the JSON:
 {
-  "action": "buy_material" | "hire_staff" | "build_room" | "upgrade_room" | "set_speed" | "wait",
+  "action": "buy_material" | "hire_staff" | "fire_staff" | "build_room" | "upgrade_room" | "set_speed" | "wait",
   "params": {
     "material": "concrete"|"wood"|"steel",              (buy_material only)
     "amount": <integer>,                                 (buy_material only)
-    "type": "housekeeper"|"builder"|"receptionist",     (hire_staff only)
+    "type": "housekeeper"|"builder"|"receptionist",     (hire_staff / fire_staff)
     "f": <floor>, "r": <row>, "c": <col>,               (upgrade_room only)
     "speed": 1|2|4                                       (set_speed only)
   },
   "reasoning": "<one sentence — what income/cost problem does this solve>"
 }
 
-Note on build_room: takes no params — builds in the next available empty cell automatically.`;
+Notes:
+- build_room: takes no params — builds in the next available empty cell automatically.
+- fire_staff: dismisses one staff of the given type, immediately removing their wage. Use when wages exceed income and you cannot recover.
+- set_speed 4: do this on turn 1 or as soon as the hotel is stable — idle time is wasted money.`;
 
 // ─── Read game state from the live page ──────────────────────────────────────
 async function readState(page) {
@@ -232,10 +235,13 @@ async function readState(page) {
             costs,
             affordability: {
                 canBuildRoom: gs_cash >= costs.buildRoom.cash && materials.concrete >= costs.buildRoom.concrete && materials.wood >= costs.buildRoom.wood,
-                canUpgradeRoom: gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
+                canUpgradeRoom: upgradeTargets.length > 0 && gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
                 canHireHousekeeper: gs_cash >= C.staff.housekeeper.cost,
                 canHireBuilder: gs_cash >= C.staff.builder.cost,
                 canHireReceptionist: gs_cash >= C.staff.receptionist.cost,
+                canFireHousekeeper: s.staff.housekeeper > 0,
+                canFireBuilder: s.staff.builder > 0,
+                canFireReceptionist: s.staff.receptionist > 0,
             }
         };
     });
@@ -250,6 +256,9 @@ async function execute(page, action) {
             break;
         case 'hire_staff':
             await page.evaluate(({ type }) => window.hireStaff(type), params);
+            break;
+        case 'fire_staff':
+            await page.evaluate(({ type }) => window.fireStaff(type), params);
             break;
         case 'build_room':
             await page.evaluate(() => {
@@ -357,12 +366,22 @@ async function tick(page, turn, logger, session) {
 
     session.actionCounts[action.action] = (session.actionCounts[action.action] || 0) + 1;
 
+    const roomsTotalBefore = gs.roomSummary.total;
     await execute(page, action);
 
-    // Track rooms built / upgraded from action type
-    // NOTE: may overcount if resources were insufficient — action was silently ignored
-    if (action.action === 'build_room')   session.roomsBuilt++;
-    if (action.action === 'upgrade_room') session.roomsUpgraded++;
+    // Verify build/upgrade actually changed state (avoids overcounting silent no-ops)
+    if (action.action === 'build_room' || action.action === 'upgrade_room') {
+        const gsAfter = await readState(page);
+        if (gsAfter) {
+            if (action.action === 'build_room' && gsAfter.roomSummary.total > roomsTotalBefore)
+                session.roomsBuilt++;
+            if (action.action === 'upgrade_room') {
+                const levelBefore = JSON.stringify(gs.roomSummary.byLevel);
+                const levelAfter  = JSON.stringify(gsAfter.roomSummary.byLevel);
+                if (levelAfter !== levelBefore) session.roomsUpgraded++;
+            }
+        }
+    }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -403,7 +422,7 @@ async function main() {
     );
     console.log('[agent] Game loaded. Starting in 2s...\n');
     await page.waitForTimeout(2000);
-    await page.evaluate(() => window.setGameSpeed(2));
+    await page.evaluate(() => window.setGameSpeed(4));
 
     let turn = 1;
     while (MAX_TURNS === 0 || turn <= MAX_TURNS) {
