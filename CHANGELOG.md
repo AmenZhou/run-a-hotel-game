@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.7] - 2026-05-25
+### Fixed (AI agent)
+- **Affordability spam in JSONL** — long runs showed dozens of `blocked_action` rows where the model kept choosing `build_room` while `canBuildRoom` was false. The user prompt now ends with an explicit **Valid actions this turn** list derived from `affordability`, and illegal picks are **clamped to `wait`** with an `override` log (`affordability_clamp`) instead of burning a tick on a blocked action.
+
 ## [0.3.6] - 2026-05-25
 ### Fixed
 - **Lower floors hard to click with 3+ guest levels** — stacked iso diamonds used to always pick the top floor; hover/click now choose the tile whose center is closest to the cursor, with ties favoring the **lower** floor so mid-levels stay reachable

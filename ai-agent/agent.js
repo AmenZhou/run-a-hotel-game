@@ -128,7 +128,7 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 
 ## Affordability rule
 
-The state snapshot includes an \`affordability\` object. NEVER choose an action where the corresponding \`can*\` flag is false — always choose \`wait\` instead.
+The state snapshot includes an \`affordability\` object. Each turn the user message ends with **Valid actions this turn:** listing what you are allowed to output. NEVER output an action not in that list — if nothing is affordable except \`wait\`, output \`wait\`.
 
 ## Output format
 
@@ -312,6 +312,59 @@ async function execute(page, action) {
     }
 }
 
+/** Labels the model may emit this turn (affordability-aware). */
+function validActionsThisTurn(gs) {
+    const a = gs.affordability;
+    const out = ['wait', 'buy_material', 'set_speed'];
+    if (a.canBuildRoom) out.push('build_room');
+    if (a.canUpgradeRoom) out.push('upgrade_room');
+    if (a.canHireHousekeeper) out.push('hire_staff:housekeeper');
+    if (a.canHireBuilder) out.push('hire_staff:builder');
+    if (a.canHireReceptionist) out.push('hire_staff:receptionist');
+    if (a.canFireHousekeeper) out.push('fire_staff:housekeeper');
+    if (a.canFireBuilder) out.push('fire_staff:builder');
+    if (a.canFireReceptionist) out.push('fire_staff:receptionist');
+    return out;
+}
+
+/**
+ * If the model ignored affordability, coerce to wait so the tick still advances
+ * cleanly (logs override instead of spamming blocked_action).
+ */
+function clampActionToAffordability(action, gs) {
+    const af = gs.affordability;
+    const orig = action.action;
+    const p = action.params || {};
+
+    if (orig === 'build_room' && !af.canBuildRoom) {
+        return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot build]`.trim() }, clamped: true, from: orig };
+    }
+    if (orig === 'upgrade_room' && !af.canUpgradeRoom) {
+        return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot upgrade]`.trim() }, clamped: true, from: orig };
+    }
+    if (orig === 'hire_staff') {
+        const t = p.type;
+        const ok =
+            (t === 'housekeeper' && af.canHireHousekeeper) ||
+            (t === 'builder' && af.canHireBuilder) ||
+            (t === 'receptionist' && af.canHireReceptionist);
+        if (!ok) {
+            return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot hire ${t || '?'}]`.trim() }, clamped: true, from: orig };
+        }
+    }
+    if (orig === 'fire_staff') {
+        const t = p.type;
+        const ok =
+            (t === 'housekeeper' && af.canFireHousekeeper) ||
+            (t === 'builder' && af.canFireBuilder) ||
+            (t === 'receptionist' && af.canFireReceptionist);
+        if (!ok) {
+            return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot fire ${t || '?'}]`.trim() }, clamped: true, from: orig };
+        }
+    }
+    return { action, clamped: false, from: null };
+}
+
 // ─── One agent tick ───────────────────────────────────────────────────────────
 async function tick(page, turn, logger, session) {
     const gs = await readState(page);
@@ -388,9 +441,13 @@ async function tick(page, turn, logger, session) {
     }
 
     // ── Ask LLM ──
+    const allowed = validActionsThisTurn(gs);
     const raw = await askLLM(
         SYSTEM_PROMPT,
-        `Game state:\n${JSON.stringify(gs, null, 2)}\n\nWhat single action maximizes my cash? Reply with one JSON action.`
+        `Game state:\n${JSON.stringify(gs, null, 2)}\n\n` +
+            `Valid actions this turn (choose exactly one name; for hire_staff/fire_staff use params.type matching the suffix after the colon):\n` +
+            `${allowed.join(', ')}\n\n` +
+            `What single action maximizes my cash? Reply with one JSON action.`
     );
 
     const clean = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
@@ -402,6 +459,13 @@ async function tick(page, turn, logger, session) {
         console.error('[agent] Bad JSON:', clean);
         logger.write({ type: 'error', turn, error: 'bad_json', raw: clean });
         return;
+    }
+
+    const { action: actionAfterClamp, clamped, from: clampedFrom } = clampActionToAffordability(action, gs);
+    action = actionAfterClamp;
+    if (clamped) {
+        console.log(`         ⚡ clamped ${clampedFrom} → wait (affordability)`);
+        logger.write({ type: 'override', turn, from: clampedFrom, to: 'wait', reason: 'affordability_clamp' });
     }
 
     const paramsStr = Object.keys(action.params || {}).length
@@ -419,24 +483,6 @@ async function tick(page, turn, logger, session) {
         reasoning: action.reasoning,
         cash_before: gs.cash,
     });
-
-    // ── Hard affordability guard — override unaffordable actions to wait ──
-    const af = gs.affordability;
-    const blocked =
-        (action.action === 'build_room'  && !af.canBuildRoom) ||
-        (action.action === 'upgrade_room' && !af.canUpgradeRoom) ||
-        (action.action === 'hire_staff'  && action.params?.type === 'housekeeper'  && !af.canHireHousekeeper) || // requires dirty > 0
-        (action.action === 'hire_staff'  && action.params?.type === 'builder'      && !af.canHireBuilder) ||
-        (action.action === 'hire_staff'  && action.params?.type === 'receptionist' && !af.canHireReceptionist) ||
-        (action.action === 'fire_staff'  && action.params?.type === 'housekeeper'  && !af.canFireHousekeeper) ||
-        (action.action === 'fire_staff'  && action.params?.type === 'builder'      && !af.canFireBuilder) ||
-        (action.action === 'fire_staff'  && action.params?.type === 'receptionist' && !af.canFireReceptionist);
-
-    if (blocked) {
-        console.log(`         ⛔ blocked (unaffordable) → forced wait`);
-        logger.write({ type: 'blocked_action', turn, attempted: action.action, params: action.params || {}, reason: 'unaffordable' });
-        return;
-    }
 
     session.actionCounts[action.action] = (session.actionCounts[action.action] || 0) + 1;
 
