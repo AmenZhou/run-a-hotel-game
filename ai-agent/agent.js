@@ -26,6 +26,7 @@ const HEADLESS  = args.includes('--headless');
 const TICK_MS   = parseInt(args[args.indexOf('--tick')  + 1]) || 4000;
 const MAX_TURNS = parseInt(args[args.indexOf('--turns') + 1]) || 0;   // 0 = unlimited
 const MODEL_ARG = args[args.indexOf('--model') + 1] || 'claude';         // claude | openai | openai-mini
+const NEW_GAME  = !args.includes('--continue-save');                     // default: fresh game each run
 
 // ─── Structured logger ────────────────────────────────────────────────────────
 class Logger {
@@ -116,7 +117,7 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 
 ## Money-maximization priorities
 
-1. **Dirty rooms are lost income.** Hire a housekeeper the moment any room goes dirty — but never more than 1 housekeeper per 3 dirty rooms. One housekeeper can clean all rooms; hiring extras wastes wages.
+1. **Dirty rooms are lost income.** Hire a housekeeper only when \`roomSummary.dirty > 0\` — never hire preemptively. Cap at 1 housekeeper per 3 dirty rooms.
 2. **Room upgrades are the best ROI.** Lvl 4 earns 12× more than Lvl 1. Upgrade every room as soon as you can afford it.
 3. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
 4. **Receptionist multiplies income.** Each one boosts check-in rate 20% — hire early.
@@ -205,6 +206,7 @@ async function readState(page) {
         const gs_cash = Math.round(s.cash);
         const materials = s.materials;
         const costs = { buildRoom: C.buildRoomCost, upgradeRoom: C.upgradeRoomCost };
+        const dirtyCount = rooms.filter(r => r.status === 'dirty').length;
 
         let builtCount = 0;
         let emptySlots = 0;
@@ -256,8 +258,9 @@ async function readState(page) {
                     materials.concrete >= costs.buildRoom.concrete &&
                     materials.wood >= costs.buildRoom.wood,
                 canUpgradeRoom: upgradeTargets.length > 0 && gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
-                canHireHousekeeper: gs_cash >= C.staff.housekeeper.cost &&
-                    s.staff.housekeeper < Math.max(1, Math.ceil(rooms.filter(r => r.status === 'dirty').length / 3)),
+                canHireHousekeeper: dirtyCount > 0 &&
+                    gs_cash >= C.staff.housekeeper.cost &&
+                    s.staff.housekeeper < Math.max(1, Math.ceil(dirtyCount / 3)),
                 canHireBuilder: gs_cash >= C.staff.builder.cost,
                 canHireReceptionist: gs_cash >= C.staff.receptionist.cost,
                 canFireHousekeeper: s.staff.housekeeper > 0,
@@ -417,7 +420,7 @@ async function tick(page, turn, logger, session) {
     const blocked =
         (action.action === 'build_room'  && !af.canBuildRoom) ||
         (action.action === 'upgrade_room' && !af.canUpgradeRoom) ||
-        (action.action === 'hire_staff'  && action.params?.type === 'housekeeper'  && !af.canHireHousekeeper) ||
+        (action.action === 'hire_staff'  && action.params?.type === 'housekeeper'  && !af.canHireHousekeeper) || // requires dirty > 0
         (action.action === 'hire_staff'  && action.params?.type === 'builder'      && !af.canHireBuilder) ||
         (action.action === 'hire_staff'  && action.params?.type === 'receptionist' && !af.canHireReceptionist) ||
         (action.action === 'fire_staff'  && action.params?.type === 'housekeeper'  && !af.canFireHousekeeper) ||
@@ -480,6 +483,7 @@ async function main() {
     console.log(`  Headless : ${HEADLESS}`);
     console.log(`  Tick     : ${TICK_MS}ms`);
     console.log(`  Max turns: ${MAX_TURNS || '∞'}`);
+    console.log(`  New game : ${NEW_GAME ? 'yes (use --continue-save to keep save)' : 'no'}`);
     console.log('');
 
     logger.write({
@@ -500,6 +504,13 @@ async function main() {
     );
     console.log('[agent] Game loaded. Starting in 2s...\n');
     await page.waitForTimeout(2000);
+
+    if (NEW_GAME) {
+        await page.evaluate(() => window.startNewGame(true));
+        console.log('[agent] New game started — $5000 cash, 0 staff, 1 starter room\n');
+        session.lastCash = null;
+    }
+
     await page.evaluate(() => window.setGameSpeed(4));
 
     let turn = 1;

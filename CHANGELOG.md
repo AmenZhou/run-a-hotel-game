@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.3] - 2026-05-25
+### Fixed
+- **Agent premature housekeeper hire** — `canHireHousekeeper` requires at least one dirty room; blocks LLM hires when `dirty === 0`
+
+## [0.3.2] - 2026-05-25
+### Changed
+- **No starter staff** — new games and fresh loads start with 0 employees; hire from Management when ready (passive room cleaning still applies)
+- **Agent auto new game** — each agent run calls `startNewGame()` on launch (skip with `--continue-save`); exposed as `window.startNewGame()` for automation
+
 ## [0.3.1] - 2026-05-25
 ### Fixed
 - **Agent build no-ops** — `canBuildRoom` now mirrors the UI build button (capacity, placement, materials); ineffective `build_room`/`upgrade_room` calls are logged as `blocked_action` with reason `no_effect`
