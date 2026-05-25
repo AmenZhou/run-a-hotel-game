@@ -3,6 +3,7 @@
 ## [0.3.7] - 2026-05-25
 ### Fixed (AI agent)
 - **Affordability spam in JSONL** — long runs showed dozens of `blocked_action` rows where the model kept choosing `build_room` while `canBuildRoom` was false. The user prompt now ends with an explicit **Valid actions this turn** list derived from `affordability`, and illegal picks are **clamped to `wait`** with an `override` log (`affordability_clamp`) instead of burning a tick on a blocked action.
+- **Malformed `hire_staff:role` / `fire_staff:role` labels** — some models copied the shorthand from the allowed-action list into the JSON `action` field, which bypassed `execute()`'s `hire_staff` switch. Those labels are now **normalized** to `hire_staff` / `fire_staff` plus `params.type`, and the prompt uses parentheses instead of `type:value` shorthands.
 
 ## [0.3.6] - 2026-05-25
 ### Fixed

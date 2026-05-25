@@ -318,13 +318,28 @@ function validActionsThisTurn(gs) {
     const out = ['wait', 'buy_material', 'set_speed'];
     if (a.canBuildRoom) out.push('build_room');
     if (a.canUpgradeRoom) out.push('upgrade_room');
-    if (a.canHireHousekeeper) out.push('hire_staff:housekeeper');
-    if (a.canHireBuilder) out.push('hire_staff:builder');
-    if (a.canHireReceptionist) out.push('hire_staff:receptionist');
-    if (a.canFireHousekeeper) out.push('fire_staff:housekeeper');
-    if (a.canFireBuilder) out.push('fire_staff:builder');
-    if (a.canFireReceptionist) out.push('fire_staff:receptionist');
+    if (a.canHireHousekeeper) out.push('hire_staff (housekeeper)');
+    if (a.canHireBuilder) out.push('hire_staff (builder)');
+    if (a.canHireReceptionist) out.push('hire_staff (receptionist)');
+    if (a.canFireHousekeeper) out.push('fire_staff (housekeeper)');
+    if (a.canFireBuilder) out.push('fire_staff (builder)');
+    if (a.canFireReceptionist) out.push('fire_staff (receptionist)');
     return out;
+}
+
+/** Map mistaken action labels like "hire_staff:receptionist" → proper JSON shape. */
+function normalizeActionShape(action) {
+    if (!action || typeof action.action !== 'string') return action;
+    let act = action.action.trim();
+    const m = /^(hire_staff|fire_staff):(\w+)$/.exec(act);
+    if (m) {
+        return {
+            action: m[1],
+            params: { ...(action.params || {}), type: m[2] },
+            reasoning: action.reasoning,
+        };
+    }
+    return action;
 }
 
 /**
@@ -445,7 +460,7 @@ async function tick(page, turn, logger, session) {
     const raw = await askLLM(
         SYSTEM_PROMPT,
         `Game state:\n${JSON.stringify(gs, null, 2)}\n\n` +
-            `Valid actions this turn (choose exactly one name; for hire_staff/fire_staff use params.type matching the suffix after the colon):\n` +
+            `Valid actions this turn (output JSON with \"action\" exactly one of: wait, buy_material, set_speed, build_room, upgrade_room, hire_staff, fire_staff — use params as in the system prompt):\n` +
             `${allowed.join(', ')}\n\n` +
             `What single action maximizes my cash? Reply with one JSON action.`
     );
@@ -461,7 +476,7 @@ async function tick(page, turn, logger, session) {
         return;
     }
 
-    const { action: actionAfterClamp, clamped, from: clampedFrom } = clampActionToAffordability(action, gs);
+    action = normalizeActionShape(action);
     action = actionAfterClamp;
     if (clamped) {
         console.log(`         ⚡ clamped ${clampedFrom} → wait (affordability)`);
