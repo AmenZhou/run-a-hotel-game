@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
+    "openai": "^6.39.0",
     "playwright": "^1.49.0"
   }
 }

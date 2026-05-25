@@ -18,6 +18,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const GAME_PATH  = path.resolve(__dirname, '../grand_hotel_blueprint.html');
+const GAME_URL   = process.env.GAME_URL || `file://${GAME_PATH}`;
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 const args      = process.argv.slice(2);
@@ -107,8 +108,8 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 **Upgrade a room:** costs $800 + 12 wood + 6 steel. Room must be status=ready and not occupied.
 
 **Staff (hire cost + ongoing wage/sec):**
-  housekeeper  $500, $4/sec  — auto-cleans dirty rooms; without one dirty rooms never rebook
-  builder      $800, $6/sec  — speeds up room construction
+  housekeeper  $500, $2/sec  — auto-cleans dirty rooms; without one dirty rooms never rebook
+  builder      $800, $3/sec  — speeds up room construction
   receptionist $400, $3/sec  — +20% guest check-in rate per hire
 
 **Material base prices:** concrete $20, wood $12, steel $60. Buy when below base = good deal.
@@ -124,6 +125,10 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 7. **Set speed to 4×** as soon as the hotel is stable — idle time is lost money.
 8. **Never go bankrupt.** If net/sec is deeply negative and cash is low, wait. Otherwise invest aggressively.
 
+## Affordability rule
+
+The state snapshot includes an \`affordability\` object. NEVER choose an action where the corresponding \`can*\` flag is false — always choose \`wait\` instead.
+
 ## Output format
 
 Return ONLY a valid JSON object — no markdown, no explanation outside the JSON:
@@ -137,7 +142,9 @@ Return ONLY a valid JSON object — no markdown, no explanation outside the JSON
     "speed": 1|2|4                                       (set_speed only)
   },
   "reasoning": "<one sentence — what income/cost problem does this solve>"
-}`;
+}
+
+Note on build_room: takes no params — builds in the next available empty cell automatically.`;
 
 // ─── Read game state from the live page ──────────────────────────────────────
 async function readState(page) {
@@ -192,9 +199,13 @@ async function readState(page) {
             walkerCounts[w.type] = (walkerCounts[w.type] || 0) + 1;
         }
 
+        const gs_cash = Math.round(s.cash);
+        const materials = s.materials;
+        const costs = { buildRoom: C.buildRoomCost, upgradeRoom: C.upgradeRoomCost };
+
         return {
-            cash: Math.round(s.cash),
-            materials: s.materials,
+            cash: gs_cash,
+            materials,
             marketPrices: s.marketPrices,
             marketTrends: s.marketTrends,
             staff: s.staff,
@@ -218,9 +229,13 @@ async function readState(page) {
                 estRentPerSec: Math.round(estRentPerSec * 10) / 10,
                 netPerSec: Math.round((estRentPerSec - totalWages) * 10) / 10,
             },
-            costs: {
-                buildRoom: C.buildRoomCost,
-                upgradeRoom: C.upgradeRoomCost,
+            costs,
+            affordability: {
+                canBuildRoom: gs_cash >= costs.buildRoom.cash && materials.concrete >= costs.buildRoom.concrete && materials.wood >= costs.buildRoom.wood,
+                canUpgradeRoom: gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
+                canHireHousekeeper: gs_cash >= C.staff.housekeeper.cost,
+                canHireBuilder: gs_cash >= C.staff.builder.cost,
+                canHireReceptionist: gs_cash >= C.staff.receptionist.cost,
             }
         };
     });
@@ -270,6 +285,10 @@ async function tick(page, turn, logger, session) {
     if (cashDelta > 0) session.totalEarned += cashDelta;
     if (cashDelta < 0) session.totalSpent  += Math.abs(cashDelta);
 
+    // Bug 7 fix: estimate gross revenue by adding back wages paid this tick
+    const wagesThisTick = gs.financials.wagesPerSec * (TICK_MS / 1000);
+    const estimatedGrossRevenue = Math.max(0, cashDelta + wagesThisTick);
+
     // ── Console summary line ──
     const rs = gs.roomSummary;
     const delta = cashDelta >= 0 ? `+$${cashDelta}` : `-$${Math.abs(cashDelta)}`;
@@ -288,6 +307,8 @@ async function tick(page, turn, logger, session) {
         turn,
         cash: gs.cash,
         cash_delta: cashDelta,
+        estimated_gross_revenue: Math.round(estimatedGrossRevenue),
+        wages_this_tick: Math.round(wagesThisTick),
         peak_cash: session.peakCash,
         financials: gs.financials,
         rooms: gs.roomSummary,
@@ -339,6 +360,7 @@ async function tick(page, turn, logger, session) {
     await execute(page, action);
 
     // Track rooms built / upgraded from action type
+    // NOTE: may overcount if resources were insufficient — action was silently ignored
     if (action.action === 'build_room')   session.roomsBuilt++;
     if (action.action === 'upgrade_room') session.roomsUpgraded++;
 }
@@ -374,10 +396,10 @@ async function main() {
     const browser = await chromium.launch({ headless: HEADLESS });
     const page    = await browser.newPage();
 
-    await page.goto(`file://${GAME_PATH}`);
+    await page.goto(GAME_URL);
     await page.waitForFunction(
-        () => window.state && Array.isArray(window.state.hotel) && window.state.hotel.length > 0,
-        { timeout: 15_000 }
+        () => window.state && Array.isArray(window.state.hotel) && window.state.hotel.length > 1,
+        { timeout: 30_000 }
     );
     console.log('[agent] Game loaded. Starting in 2s...\n');
     await page.waitForTimeout(2000);

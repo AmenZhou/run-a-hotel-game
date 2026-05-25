@@ -83,7 +83,7 @@ const CanvasRenderer = {
                     if (state.fpFloor < state.hotel.length - 1) state.fpFloor++;
                 }
                 if (mx >= navX && mx <= navX + 44 && my >= navMid + 16 && my <= navMid + 58) {
-                    if (state.fpFloor > 0) state.fpFloor--;
+                    if (state.fpFloor > 1) state.fpFloor--;
                 }
                 return;
             }
@@ -307,10 +307,16 @@ const CanvasRenderer = {
 
     drawElevatorCabins() {
         const base = isoToScreen(ELEVATOR_C, ELEVATOR_R, 0, this.canvas.width, this.canvas.height);
-        
+
         // Scan for riders
         state.walkers.forEach(w => {
             if (w.state === 'elevator_up' || w.state === 'elevator_down') {
+                // Don't draw cabin when it's visually inside a guest room at the elevator column
+                const floorIndex = Math.round(w.f);
+                if (floorIndex >= 1 && floorIndex < state.hotel.length) {
+                    const cellAtShaft = state.hotel[floorIndex]?.[ELEVATOR_R]?.[ELEVATOR_C];
+                    if (cellAtShaft && cellAtShaft.type === 'guest') return;
+                }
                 const cabPos = getIsoLoc(base.x, base.y, ELEVATOR_U, ELEVATOR_V, w.f);
                 
                 // Draw glowing sliding glass bubble cabin
@@ -986,7 +992,7 @@ const CanvasRenderer = {
             ctx.fillText('↑', navX + 22, navMid - 29);
             ctx.font = '9px Inter'; ctx.fillText('UP', navX + 22, navMid - 16);
         }
-        if (state.fpFloor > 0) {
+        if (state.fpFloor > 1) {
             ctx.fillStyle = 'rgba(99,102,241,0.85)';
             ctx.beginPath();
             if (ctx.roundRect) ctx.roundRect(navX, navMid + 16, 44, 42, 8); else ctx.rect(navX, navMid + 16, 44, 42);
@@ -998,7 +1004,7 @@ const CanvasRenderer = {
     },
 
     drawFPDoor(side, index, cell, W, H, fL, fR, fT, fB, t, dt = 0.22) {
-        if (cell.type === 'empty') return;
+        if (cell.type !== 'guest') return; // only guest rooms get a corridor door
         const ctx = this.ctx;
         const lerp = (a, b, t) => a + (b - a) * t;
         const t2 = t + dt;

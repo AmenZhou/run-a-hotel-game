@@ -29,8 +29,8 @@ const state = {
     },
     walkers: [], // Entities inside hotel (Guests, builders, housekeepers)
     particles: [], // Dynamic particles
-    maxRooms: 18, // 6 rooms × 3 guest floors
-    maxFloors: 3,
+    maxRooms: 20, // 5 rooms × 4 guest floors (elevator shaft excluded per floor)
+    maxFloors: 4,
     zoom: 1.1,
     panX: 0,
     panY: 0,
@@ -64,8 +64,8 @@ const CONSTANTS = {
         steel: 6
     },
     staff: {
-        housekeeper: { cost: 500, wage: 4 },
-        builder: { cost: 800, wage: 6 },
+        housekeeper: { cost: 500, wage: 2 },
+        builder: { cost: 800, wage: 3 },
         receptionist: { cost: 400, wage: 3 }
     },
     roomLevels: [
@@ -510,7 +510,20 @@ function getVacantRoom() {
 // Checkin trigger logic
 function triggerGuestBooking() {
     const vacant = getVacantRoom();
-    if (!vacant) return;
+    if (!vacant) {
+        // Debug: log room states to help diagnose booking issues
+        const roomStates = [];
+        for (let f = 1; f < state.hotel.length; f++) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    const rm = state.hotel[f][r][c];
+                    if (rm.type === 'guest') roomStates.push(`F${f}R${r}C${c}:${rm.status}(guestId=${rm.guestId})`);
+                }
+            }
+        }
+        console.log('[booking] No vacant room. Staff:', JSON.stringify(state.staff), '| Rooms:', roomStates.join(', ') || 'none');
+        return;
+    }
 
     // Checkin odds boost from star rating + receptionists
     const baseChance = 0.25;
@@ -523,7 +536,9 @@ function triggerGuestBooking() {
         finalChance *= 2.0;
     }
 
-    if (Math.random() < finalChance) {
+    const roll = Math.random();
+    console.log(`[booking] Vacant: ${vacant.id} | chance=${finalChance.toFixed(2)} roll=${roll.toFixed(2)} → ${roll < finalChance ? 'BOOKED' : 'no show'}`);
+    if (roll < finalChance) {
         // Spawn walker guest heading to lobby desk
         const guestId = spawnWalker('guest', vacant);
         vacant.guestId = guestId; // Reserve room spot
@@ -820,4 +835,11 @@ function updateWalkers(dt) {
         }
     }
 }
+
+// Expose game internals for the AI agent
+window.state      = state;
+window.CONSTANTS  = CONSTANTS;
+window.GRID_ROWS  = GRID_ROWS;
+window.GRID_COLS  = GRID_COLS;
+window.addFloor   = addFloor;
 

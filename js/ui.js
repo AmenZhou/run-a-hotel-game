@@ -18,7 +18,7 @@ function simulationStep() {
         const count = state.staff[staffType];
         totalWages += count * CONSTANTS.staff[staffType].wage;
     }
-    state.cash -= totalWages;
+    state.cash = Math.max(0, state.cash - totalWages);
 
     // Estimate steady-state rent from currently occupied rooms
     // (actual cash arrives on checkout; this is the display estimate)
@@ -304,6 +304,7 @@ if (btnBuild) {
         for (let f = 1; f < state.hotel.length; f++) {
             for (let r = 0; r < GRID_ROWS; r++) {
                 for (let c = 0; c < GRID_COLS; c++) {
+                    if (r === ELEVATOR_R && c === ELEVATOR_C) continue; // elevator shaft — no rooms here
                     if (state.hotel[f][r][c].type === 'empty') {
                         target = { f, r, c };
                         break;
@@ -325,6 +326,12 @@ if (btnBuild) {
             showToast(`Floor ${target.f} Unlocked!`, `New guest floor added — ${state.maxFloors - guestFloors - 1} floor expansion(s) remaining.`, 'success');
         }
 
+        if (state.cash < CONSTANTS.buildRoomCost.cash ||
+            state.materials.concrete < CONSTANTS.buildRoomCost.concrete ||
+            state.materials.wood < CONSTANTS.buildRoomCost.wood) {
+            showToast('Insufficient Resources', 'Not enough cash or materials to build.', 'warning');
+            return;
+        }
         state.cash -= CONSTANTS.buildRoomCost.cash;
         state.materials.concrete -= CONSTANTS.buildRoomCost.concrete;
         state.materials.wood -= CONSTANTS.buildRoomCost.wood;
@@ -526,7 +533,14 @@ function setGameSpeed(speed) {
 
 // Setup static default reception staff
 function spawnDefaultReceptionist() {
+    state.staff.receptionist++;
     spawnWalker('receptionist');
+}
+
+// Setup starter housekeeper so dirty rooms always get cleaned
+function spawnDefaultHousekeeper() {
+    state.staff.housekeeper++;
+    spawnWalker('housekeeper');
 }
 
 // Save / Load button handlers
@@ -543,11 +557,13 @@ document.getElementById('btn-load')?.addEventListener('click', () => {
 window.onload = function () {
     // Restore from save if one exists, otherwise start fresh
     if (hasSave() && loadGame()) {
-        // loadGame() re-spawns staff; ensure at least 1 receptionist is present
+        // loadGame() re-spawns staff; ensure at least 1 receptionist and 1 housekeeper are present
         if (!state.walkers.some(w => w.type === 'receptionist')) spawnDefaultReceptionist();
+        if (!state.walkers.some(w => w.type === 'housekeeper')) spawnDefaultHousekeeper();
     } else {
         initHotel();
         spawnDefaultReceptionist();
+        spawnDefaultHousekeeper();
     }
     Room3DRenderer.init();
     CanvasRenderer.init('game-canvas');
@@ -579,3 +595,7 @@ window.onload = function () {
     }
     requestAnimationFrame(drawLoop);
 }
+
+// Expose for AI agent
+window.setGameSpeed = setGameSpeed;
+window.initHotel    = initHotel;
