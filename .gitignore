@@ -1,3 +1,4 @@
 .env
 .env.*
 ai-agent/node_modules/
+logs/
