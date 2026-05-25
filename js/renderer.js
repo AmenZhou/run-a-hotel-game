@@ -36,21 +36,10 @@ const CanvasRenderer = {
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            this.hoveredTile = null;
-            // Scan top levels down to secure click ordering
-            for (let f = state.hotel.length - 1; f >= 0; f--) {
-                for (let r = 0; r < GRID_ROWS; r++) {
-                    for (let c = 0; c < GRID_COLS; c++) {
-                        const cell = state.hotel[f][r][c];
-                        if (cell.type !== 'empty') {
-                            if (isPointInIsometricTile(mouseX, mouseY, c, r, f, this.canvas.width, this.canvas.height)) {
-                                this.hoveredTile = { f, r, c, cell };
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
+            const picked = pickHoveredIsoTile(mouseX, mouseY, this.canvas.width, this.canvas.height);
+            this.hoveredTile = picked
+                ? { f: picked.f, r: picked.r, c: picked.c, cell: picked.cell }
+                : null;
         });
 
         // Trigger manual clicks
@@ -138,6 +127,15 @@ const CanvasRenderer = {
             return;
         }
         Room3DRenderer.hide(); // not in firstperson — ensure overlay is hidden
+
+        const pivX = this.canvas.width / 2 + state.panX;
+        const pivY = this.canvas.height / 2 + state.panY + 120;
+        const yaw = state.isoYaw || 0;
+        this.ctx.save();
+        this.ctx.translate(pivX, pivY);
+        this.ctx.rotate(yaw);
+        this.ctx.translate(-pivX, -pivY);
+
         this.drawGround();
 
         // 1. Draw Glass Elevator Column Track (Behind the rooms)
@@ -167,6 +165,8 @@ const CanvasRenderer = {
 
         // 5. Render Particle Sparks
         this.drawParticles();
+
+        this.ctx.restore();
     },
 
     drawGround() {

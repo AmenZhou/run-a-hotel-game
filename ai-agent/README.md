@@ -49,7 +49,7 @@ ANTHROPIC_API_KEY=sk-... node agent.js --turns 50
 ## Sample console output
 
 ```
-[T1]  $5,000 | net -0/s | rooms: 1 ready, 0 occ, 0 dirty, 0 bldg | staff: rec=1 hk=0 bld=0
+[T1]  $10,000 | net -0/s | rooms: 1 ready, 0 occ, 0 dirty, 0 bldg | staff: rec=0 hk=0 bld=0
 [T1]  → buy_material {"material":"concrete","amount":25} | Need concrete to build first room
 [T2]  $4,500 | net -3/s | rooms: 1 ready, 0 occ, 0 dirty, 0 bldg
 [T2]  → build_room {} | Building first room to start earning rent

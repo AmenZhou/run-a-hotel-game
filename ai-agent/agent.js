@@ -507,7 +507,7 @@ async function main() {
 
     if (NEW_GAME) {
         await page.evaluate(() => window.startNewGame(true));
-        console.log('[agent] New game started — $5000 cash, 0 staff, 1 starter room\n');
+        console.log('[agent] New game started — $10,000 cash, 0 staff, 1 starter room\n');
         session.lastCash = null;
     }
 

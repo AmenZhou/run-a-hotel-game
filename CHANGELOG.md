@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.6] - 2026-05-25
+### Fixed
+- **Lower floors hard to click with 3+ guest levels** — stacked iso diamonds used to always pick the top floor; hover/click now choose the tile whose center is closest to the cursor, with ties favoring the **lower** floor so mid-levels stay reachable
+
+### Added
+- **Overlook rotation** — `state.isoYaw` with ⟲ / ⟳ controls (10° per click) around the same pivot as pan/zoom; persists in save/load; reset view clears rotation
+- **Inverse-rotate hit testing** — mouse picking matches the rotated canvas
+
+## [0.3.5] - 2026-05-25
+### Changed
+- **Starting budget** — new games and `startNewGame()` now begin with **$10,000** cash (was $5,000); defined as `STARTING_CASH` in `js/game-state.js`
+
+### Documentation
+- `ai-agent/README.md` — sample console output updated for $10k start and zero starter staff
+
 ## [0.3.4] - 2026-05-25
 ### Notes — game balance & design (from agent / JSONL log review)
 

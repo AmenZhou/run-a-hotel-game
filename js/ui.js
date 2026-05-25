@@ -523,7 +523,19 @@ if (btnAiMarketing) {
 // Panning and Camera view controls
 document.getElementById('btn-zoom-in').addEventListener('click', () => { state.zoom = Math.min(1.8, state.zoom + 0.1); });
 document.getElementById('btn-zoom-out').addEventListener('click', () => { state.zoom = Math.max(0.5, state.zoom - 0.1); });
-document.getElementById('btn-reset-view').addEventListener('click', () => { state.zoom = 1.1; state.panX = 0; state.panY = 0; });
+document.getElementById('btn-reset-view').addEventListener('click', () => {
+    state.zoom = 1.1;
+    state.panX = 0;
+    state.panY = 0;
+    state.isoYaw = 0;
+});
+const ISO_YAW_STEP = Math.PI / 18; // 10°
+document.getElementById('btn-rotate-left')?.addEventListener('click', () => {
+    state.isoYaw = (state.isoYaw || 0) - ISO_YAW_STEP;
+});
+document.getElementById('btn-rotate-right')?.addEventListener('click', () => {
+    state.isoYaw = (state.isoYaw || 0) + ISO_YAW_STEP;
+});
 
 document.getElementById('btn-toggle-view').addEventListener('click', () => {
     const modes   = ['inside', 'exterior', 'firstperson'];
@@ -580,17 +592,29 @@ function setGameSpeed(speed) {
     });
 }
 
-// Setup static default reception staff
-function spawnDefaultReceptionist() {
-    state.staff.receptionist++;
-    spawnWalker('receptionist');
-}
-
-// Setup starter housekeeper so dirty rooms always get cleaned
-function spawnDefaultHousekeeper() {
-    state.staff.housekeeper++;
-    spawnWalker('housekeeper');
-}
+// Reset to default starting state (no staff — hire from Management)
+window.startNewGame = function (silent = false) {
+    deleteSave();
+    state.cash = STARTING_CASH;
+    state.materials = { concrete: 50, wood: 35, steel: 15 };
+    state.marketPrices = { concrete: 20, wood: 12, steel: 60 };
+    state.staff = { housekeeper: 0, receptionist: 0, builder: 0 };
+    state.walkers = [];
+    state.particles = [];
+    state.gameSpeed = 1;
+    state.campaignActive = false;
+    state.campaignTimer = 0;
+    state.fpFloor = 1;
+    state.fpRoom = null;
+    state.isoYaw = 0;
+    state.zoom = 1.1;
+    state.panX = 0;
+    state.panY = 0;
+    initHotel();
+    populateUpgradeSelect();
+    updateUI();
+    if (!silent) showToast('New Game', 'Your hotel has been reset. Good luck!', 'success');
+};
 
 // Save / Load / New Game button handlers
 document.getElementById('btn-save')?.addEventListener('click', () => saveGame());
@@ -603,38 +627,16 @@ document.getElementById('btn-load')?.addEventListener('click', () => {
 });
 document.getElementById('btn-new-game')?.addEventListener('click', () => {
     if (!confirm('Start a new game? Your current progress will be lost.')) return;
-    deleteSave();
-    // Reset state to defaults
-    state.cash = 5000;
-    state.materials = { concrete: 50, wood: 35, steel: 15 };
-    state.marketPrices = { concrete: 20, wood: 12, steel: 60 };
-    state.staff = { housekeeper: 0, receptionist: 0, builder: 0 };
-    state.walkers = [];
-    state.particles = [];
-    state.gameSpeed = 1;
-    state.campaignActive = false;
-    state.campaignTimer = 0;
-    state.fpFloor = 1;
-    state.fpRoom = null;
-    initHotel();
-    spawnDefaultReceptionist();
-    spawnDefaultHousekeeper();
-    populateUpgradeSelect();
-    updateUI();
-    showToast('New Game', 'Your hotel has been reset. Good luck!', 'success');
+    window.startNewGame(false);
 });
 
 // Initial launch loop
 window.onload = function () {
     // Restore from save if one exists, otherwise start fresh
     if (hasSave() && loadGame()) {
-        // loadGame() re-spawns staff; ensure at least 1 receptionist and 1 housekeeper are present
-        if (!state.walkers.some(w => w.type === 'receptionist')) spawnDefaultReceptionist();
-        if (!state.walkers.some(w => w.type === 'housekeeper')) spawnDefaultHousekeeper();
+        // loadGame() re-spawns walkers from saved staff counts — no free starter hires
     } else {
         initHotel();
-        spawnDefaultReceptionist();
-        spawnDefaultHousekeeper();
     }
     Room3DRenderer.init();
     CanvasRenderer.init('game-canvas');

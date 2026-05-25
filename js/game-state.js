@@ -3,9 +3,12 @@ const GRID_ROWS = 2; // rows per floor (corridor sides: left wall / right wall)
 const GRID_COLS = 3; // columns per floor (rooms per corridor side)
 const GRID_SIZE = GRID_COLS; // legacy alias used by isometric renderer square loops
 
+/** Starting cash for new games and full resets (`startNewGame`, first load with no save). */
+const STARTING_CASH = 10000;
+
 // Game State
 const state = {
-    cash: 5000,
+    cash: STARTING_CASH,
     materials: {
         concrete: 50,
         wood: 35,
@@ -37,6 +40,8 @@ const state = {
     activeTab: 'build',
     viewMode: 'inside', // 'inside' = transparent view showing furniture; 'exterior' = solid building
     gameSpeed: 1, // 1x, 2x, 4x speed scaling
+    /** Yaw (rad) for isometric overlook — rotate building in Inside / Exterior views. */
+    isoYaw: 0,
     campaignActive: false,
     campaignTimer: 0,
     campaignTheme: "",
@@ -307,6 +312,7 @@ function saveGame() {
         maxRooms: state.maxRooms,
         maxFloors: state.maxFloors,
         gameSpeed: state.gameSpeed,
+        isoYaw: state.isoYaw ?? 0,
         hotel: state.hotel.map(floor =>
             floor.map(row =>
                 row.map(cell => ({
@@ -336,6 +342,7 @@ function loadGame() {
         state.maxRooms = snap.maxRooms ?? state.maxRooms;
         state.maxFloors = snap.maxFloors ?? state.maxFloors;
         state.gameSpeed = snap.gameSpeed ?? 1;
+        state.isoYaw = snap.isoYaw ?? 0;
         state.hotel = snap.hotel;
         state.walkers = [];
         state.particles = [];
@@ -394,6 +401,55 @@ function isoToScreen(col, row, floor, canvasWidth, canvasHeight) {
     const z = floor * FLOOR_HEIGHT * state.zoom;
 
     return { x: cx + x, y: cy + y - z };
+}
+
+/** Pivot used by iso projection and overlook rotation (must match renderer). */
+function getIsoViewPivot(canvasWidth, canvasHeight) {
+    return {
+        x: canvasWidth / 2 + state.panX,
+        y: canvasHeight / 2 + state.panY + 120
+    };
+}
+
+/** Map screen coords back to pre-rotation space (inverse of canvas rotate around pivot). */
+function screenToIsoUnrotated(mx, my, canvasWidth, canvasHeight) {
+    const yaw = state.isoYaw || 0;
+    if (Math.abs(yaw) < 1e-6) return { x: mx, y: my };
+    const piv = getIsoViewPivot(canvasWidth, canvasHeight);
+    const dx = mx - piv.x;
+    const dy = my - piv.y;
+    const c = Math.cos(-yaw);
+    const s = Math.sin(-yaw);
+    return { x: piv.x + dx * c - dy * s, y: piv.y + dx * s + dy * c };
+}
+
+/**
+ * When stacked floors share a grid column, iso diamonds overlap on screen.
+ * Pick the tile whose center is closest to the cursor; on ties prefer the lower floor
+ * so mid-levels stay reachable after a third floor is built.
+ */
+function pickHoveredIsoTile(mx, my, canvasWidth, canvasHeight) {
+    const p = screenToIsoUnrotated(mx, my, canvasWidth, canvasHeight);
+    const ux = p.x;
+    const uy = p.y;
+    let best = null;
+    for (let f = state.hotel.length - 1; f >= 0; f--) {
+        for (let r = 0; r < GRID_ROWS; r++) {
+            for (let c = 0; c < GRID_COLS; c++) {
+                const cell = state.hotel[f][r][c];
+                if (cell.type === 'empty') continue;
+                if (!isPointInIsometricTile(ux, uy, c, r, f, canvasWidth, canvasHeight)) continue;
+                const center = isoToScreen(c, r, f, canvasWidth, canvasHeight);
+                const dx = ux - center.x;
+                const dy = uy - center.y;
+                const d = dx * dx + dy * dy;
+                if (!best || d < best.d - 0.25 || (Math.abs(d - best.d) <= 0.25 && f < best.f)) {
+                    best = { f, r, c, cell, d };
+                }
+            }
+        }
+    }
+    return best;
 }
 
 // Coordinate helper for precise room detailing
