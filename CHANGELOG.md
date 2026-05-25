@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.4] - 2026-05-25
+### Notes — game balance & design (from agent / JSONL log review)
+
+These are **not shipped changes**; they capture follow-up ideas surfaced while stress-testing the sim.
+
+- **Rent timing** — Cash arrives mainly on **guest checkout**, while `estRentPerSec` is a smoothed estimate. Early game can feel cash-poor until checkouts land. Possible follow-ups: small per-tick rent, shorter average stay, or UI copy that makes “payday at checkout” obvious.
+- **Early expansion** — Multiple back-to-back **builds** (~$4.5k+) before income ramps can bankrupt a greedy strategy (human or AI). Possible follow-ups: tune `buildRoomCost`, starting materials, or first-room rent for a gentler ramp.
+- **Materials bottleneck** — **Concrete** hitting zero hard-stops construction until the market or buys refill. Possible follow-ups: higher starting concrete, cheaper first-floor builds, or clearer affordance for buying materials when broke.
+- **Agent vs game** — Aligning **affordability** with the real UI (disabled build button) and logging **no-op** actions improved log fidelity; the game itself benefits when telemetry matches player-visible rules.
+
 ## [0.3.3] - 2026-05-25
 ### Fixed
 - **Agent premature housekeeper hire** — `canHireHousekeeper` requires at least one dirty room; blocks LLM hires when `dirty === 0`
