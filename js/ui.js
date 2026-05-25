@@ -52,6 +52,23 @@ function simulationStep() {
         }
     }
 
+    // Passive slow cleaning for dirty rooms — 0.8%/game-sec so rooms eventually recover without a housekeeper
+    for (let f = 1; f < state.hotel.length; f++) {
+        for (let r = 0; r < GRID_ROWS; r++) {
+            for (let c = 0; c < GRID_COLS; c++) {
+                const cell = state.hotel[f][r][c];
+                if (cell.type === 'guest' && cell.status === 'dirty') {
+                    cell.cleanliness = Math.min(100, cell.cleanliness + 0.8 * state.gameSpeed);
+                    if (cell.cleanliness >= 100) {
+                        cell.cleanliness = 100;
+                        cell.status = 'ready';
+                        showToast('Room Aired Out', `Suite on Floor ${f} slowly recovered — hire a housekeeper to speed this up.`, 'info');
+                    }
+                }
+            }
+        }
+    }
+
     // Passive construction progress (3%/sec base; builders also contribute via walker AI)
     for (let f = 1; f < state.hotel.length; f++) {
         for (let r = 0; r < GRID_ROWS; r++) {

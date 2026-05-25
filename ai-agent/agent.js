@@ -23,8 +23,8 @@ const GAME_URL   = process.env.GAME_URL || `file://${GAME_PATH}`;
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 const args      = process.argv.slice(2);
 const HEADLESS  = args.includes('--headless');
-const TICK_MS   = parseInt(args[args.indexOf('--tick')  + 1]  || '4000');
-const MAX_TURNS = parseInt(args[args.indexOf('--turns') + 1]  || '0');   // 0 = unlimited
+const TICK_MS   = parseInt(args[args.indexOf('--tick')  + 1]) || 4000;
+const MAX_TURNS = parseInt(args[args.indexOf('--turns') + 1]) || 0;   // 0 = unlimited
 const MODEL_ARG = args[args.indexOf('--model') + 1] || 'claude';         // claude | openai | openai-mini
 
 // ─── Structured logger ────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 
 ## Money-maximization priorities
 
-1. **Dirty rooms are lost income.** Hire a housekeeper the moment any room goes dirty. A dirty room that can't rebook costs you more than the wage.
+1. **Dirty rooms are lost income.** Hire a housekeeper the moment any room goes dirty — but never more than 1 housekeeper per 3 dirty rooms. One housekeeper can clean all rooms; hiring extras wastes wages.
 2. **Room upgrades are the best ROI.** Lvl 4 earns 12× more than Lvl 1. Upgrade every room as soon as you can afford it.
 3. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
 4. **Receptionist multiplies income.** Each one boosts check-in rate 20% — hire early.
@@ -331,6 +331,23 @@ async function tick(page, turn, logger, session) {
         upgrade_targets_count: gs.upgradeTargets.length,
     });
 
+    // ── Pre-LLM override: fire staff if cash runway < 20s ──
+    const wages = gs.financials.wagesPerSec;
+    const runway = wages > 0 ? gs.cash / wages : Infinity;
+    if (runway < 20 && wages > 0) {
+        // Fire the most expensive dispensable staff type
+        const fireOrder = ['builder', 'housekeeper', 'receptionist'];
+        const target = fireOrder.find(t => gs.staff[t] > 0);
+        if (target) {
+            const override = { action: 'fire_staff', params: { type: target }, reasoning: `[auto] Runway ${Math.round(runway)}s < 20s — firing ${target} to prevent bankruptcy` };
+            console.log(`         ⚡ override → fire_staff {${target}} (runway ${Math.round(runway)}s)`);
+            logger.write({ type: 'override', turn, ...override });
+            session.actionCounts['fire_staff'] = (session.actionCounts['fire_staff'] || 0) + 1;
+            await execute(page, override);
+            return;
+        }
+    }
+
     // ── Ask LLM ──
     const raw = await askLLM(
         SYSTEM_PROMPT,
@@ -363,6 +380,24 @@ async function tick(page, turn, logger, session) {
         reasoning: action.reasoning,
         cash_before: gs.cash,
     });
+
+    // ── Hard affordability guard — override unaffordable actions to wait ──
+    const af = gs.affordability;
+    const blocked =
+        (action.action === 'build_room'  && !af.canBuildRoom) ||
+        (action.action === 'upgrade_room' && !af.canUpgradeRoom) ||
+        (action.action === 'hire_staff'  && action.params?.type === 'housekeeper'  && !af.canHireHousekeeper) ||
+        (action.action === 'hire_staff'  && action.params?.type === 'builder'      && !af.canHireBuilder) ||
+        (action.action === 'hire_staff'  && action.params?.type === 'receptionist' && !af.canHireReceptionist) ||
+        (action.action === 'fire_staff'  && action.params?.type === 'housekeeper'  && !af.canFireHousekeeper) ||
+        (action.action === 'fire_staff'  && action.params?.type === 'builder'      && !af.canFireBuilder) ||
+        (action.action === 'fire_staff'  && action.params?.type === 'receptionist' && !af.canFireReceptionist);
+
+    if (blocked) {
+        console.log(`         ⛔ blocked (unaffordable) → forced wait`);
+        logger.write({ type: 'blocked_action', turn, attempted: action.action, params: action.params || {}, reason: 'unaffordable' });
+        return;
+    }
 
     session.actionCounts[action.action] = (session.actionCounts[action.action] || 0) + 1;
 
