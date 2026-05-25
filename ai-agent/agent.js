@@ -477,6 +477,7 @@ async function tick(page, turn, logger, session) {
     }
 
     action = normalizeActionShape(action);
+    const { action: actionAfterClamp, clamped, from: clampedFrom } = clampActionToAffordability(action, gs);
     action = actionAfterClamp;
     if (clamped) {
         console.log(`         ⚡ clamped ${clampedFrom} → wait (affordability)`);
