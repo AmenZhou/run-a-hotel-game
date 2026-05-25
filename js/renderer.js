@@ -16,7 +16,7 @@ const CanvasRenderer = {
         let fpDragStartAngle = 0;
 
         this.canvas.addEventListener('mousedown', (e) => {
-            if (state.viewMode === 'firstperson' && state.fpRoom) {
+            if ((state.viewMode === 'firstperson' || state.viewMode === 'manager') && state.fpRoom) {
                 fpDragActive = true;
                 fpDragStartX = e.clientX;
                 fpDragStartAngle = state.fpRoomAngle;
@@ -31,7 +31,10 @@ const CanvasRenderer = {
                 state.fpRoomAngle = fpDragStartAngle + (e.clientX - fpDragStartX) * 0.3;
                 return;
             }
-            if (state.viewMode === 'firstperson') { this.hoveredTile = null; return; }
+            if (state.viewMode === 'firstperson' || state.viewMode === 'manager') {
+                this.hoveredTile = null;
+                return;
+            }
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
@@ -44,35 +47,37 @@ const CanvasRenderer = {
 
         // Trigger manual clicks
         this.canvas.addEventListener('click', (e) => {
-            if (state.viewMode === 'firstperson') {
+            if (state.viewMode === 'firstperson' || state.viewMode === 'manager') {
                 const rect = this.canvas.getBoundingClientRect();
-                const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-                const W = this.canvas.width, H = this.canvas.height;
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                const W = this.canvas.width;
+                const H = this.canvas.height;
 
-                // If in room interior view
                 if (state.fpRoom) {
-                    // Back button: x 14-144, y H-54 to H-16
                     if (mx >= 14 && mx <= 144 && my >= H - 54 && my <= H - 16) {
                         state.fpRoom = null;
+                        Room3DRenderer.hide();
                     }
                     return;
                 }
 
-                // Corridor view: check door hit areas
-                for (const area of this.fpDoorHitAreas) {
-                    if (mx >= area.xMin && mx <= area.xMax && my >= area.yMin && my <= area.yMax) {
-                        state.fpRoom = { f: area.f, r: area.row, c: area.col };
-                        return;
+                if (state.viewMode === 'firstperson') {
+                    for (const area of this.fpDoorHitAreas) {
+                        if (mx >= area.xMin && mx <= area.xMax && my >= area.yMin && my <= area.yMax) {
+                            state.fpRoom = { f: area.f, r: area.row, c: area.col };
+                            return;
+                        }
                     }
-                }
 
-                // Floor nav buttons
-                const navX = W - 56, navMid = H / 2;
-                if (mx >= navX && mx <= navX + 44 && my >= navMid - 58 && my <= navMid - 16) {
-                    if (state.fpFloor < state.hotel.length - 1) state.fpFloor++;
-                }
-                if (mx >= navX && mx <= navX + 44 && my >= navMid + 16 && my <= navMid + 58) {
-                    if (state.fpFloor > 1) state.fpFloor--;
+                    const navX = W - 56;
+                    const navMid = H / 2;
+                    if (mx >= navX && mx <= navX + 44 && my >= navMid - 58 && my <= navMid - 16) {
+                        if (state.fpFloor < state.hotel.length - 1) state.fpFloor++;
+                    }
+                    if (mx >= navX && mx <= navX + 44 && my >= navMid + 16 && my <= navMid + 58) {
+                        if (state.fpFloor > 1) state.fpFloor--;
+                    }
                 }
                 return;
             }
@@ -126,7 +131,16 @@ const CanvasRenderer = {
             this.drawParticles();
             return;
         }
-        Room3DRenderer.hide(); // not in firstperson — ensure overlay is hidden
+        if (state.viewMode === 'manager') {
+            if (state.fpRoom) {
+                this.drawFirstPersonView();
+            } else {
+                this.drawManagerRaycastView();
+            }
+            this.drawParticles();
+            return;
+        }
+        Room3DRenderer.hide(); // hide 3D overlay in isometric / exterior views
 
         const pivX = this.canvas.width / 2 + state.panX;
         const pivY = this.canvas.height / 2 + state.panY + 120;
@@ -162,6 +176,9 @@ const CanvasRenderer = {
 
         // 4. Render Walkers
         this.drawWalkers();
+
+        // 4b. Hotel proprietor (lobby) — drawn with walkers so they read above the slab
+        this.drawHotelOwner();
 
         // 5. Render Particle Sparks
         this.drawParticles();
@@ -745,6 +762,132 @@ const CanvasRenderer = {
         }
     },
 
+    /**
+     * Two-line pill above a walker: STAFF vs GUEST, then role (Housekeeper, Builder, Reception, Guest, VIP Guest).
+     * @param {number} cx - screen x (center)
+     * @param {number} tagBottomY - canvas Y of the bottom edge of the tag (just above the head; below this Y is the character)
+     * @param {object} w - walker
+     */
+    drawWalkerIdentityTag(cx, tagBottomY, w) {
+        const ctx = this.ctx;
+        let isGuest = w.type === 'guest' || w.type === 'vip';
+        let category;
+        let role;
+        if (w.type === 'owner') {
+            category = 'OWNER';
+            role = (state.hotelOwner && state.hotelOwner.name) ? String(state.hotelOwner.name) : 'You';
+            isGuest = false;
+        } else {
+            category = isGuest ? 'GUEST' : 'STAFF';
+            role = 'Guest';
+            if (w.type === 'vip') role = 'VIP Guest';
+            else if (w.type === 'guest') role = 'Guest';
+            else if (w.type === 'housekeeper') role = 'Housekeeper';
+            else if (w.type === 'builder') role = 'Builder';
+            else if (w.type === 'receptionist') role = 'Reception';
+        }
+
+        const zt = Math.max(0.55, Math.min(2.4, state.zoom));
+        const fsCat = Math.max(5, Math.min(11, 5.5 * zt));
+        const fsRole = Math.max(6, Math.min(13, 6.5 * zt));
+        const pad = Math.max(3, 3 * zt);
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = `700 ${fsCat}px Inter,system-ui,sans-serif`;
+        const wCat = ctx.measureText(category).width;
+        ctx.font = `800 ${fsRole}px Inter,system-ui,sans-serif`;
+        const wRole = ctx.measureText(role).width;
+        const bw = Math.max(wCat, wRole) + pad * 2;
+        const lineGap = 1;
+        const bh = fsCat + fsRole + pad * 2 + lineGap;
+        const rx = cx - bw / 2;
+        const ry = tagBottomY - bh;
+
+        let fill = '#1e293b';
+        let border = '#64748b';
+        if (isGuest) {
+            fill = w.type === 'vip' ? '#451a03' : '#172554';
+            border = w.type === 'vip' ? '#fbbf24' : '#60a5fa';
+        } else if (w.type === 'housekeeper') {
+            fill = '#500724';
+            border = '#f472b6';
+        } else if (w.type === 'builder') {
+            fill = '#422006';
+            border = '#f59e0b';
+        } else if (w.type === 'receptionist') {
+            fill = '#042f2e';
+            border = '#2dd4bf';
+        } else if (w.type === 'owner') {
+            fill = '#1e1b4b';
+            border = '#eab308';
+        }
+
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = border;
+        ctx.lineWidth = Math.max(1, 1.1 * zt);
+        const rr = Math.min(8, 3 + 2 * zt);
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(rx, ry, bw, bh, rr);
+        } else {
+            ctx.rect(rx, ry, bw, bh);
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        let y = ry + pad + fsCat * 0.72;
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = `700 ${fsCat}px Inter,system-ui,sans-serif`;
+        ctx.fillText(category, cx, y);
+
+        y += fsCat * 0.35 + fsRole * 0.72;
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = `800 ${fsRole}px Inter,system-ui,sans-serif`;
+        ctx.fillText(role, cx, y);
+
+        ctx.restore();
+    },
+
+    /** Proprietor figure in the lobby (floor 0); drawn after walkers for visibility. */
+    drawHotelOwner() {
+        if (state.viewMode !== 'inside') return;
+        const o = state.hotelOwner;
+        if (!o) return;
+
+        const screen = isoToScreen(0, 0, 0, this.canvas.width, this.canvas.height);
+        const pos = getIsoLoc(screen.x, screen.y, 0.78, 0.48, 0);
+        const bob = Math.sin((o.animFrame || 0) * 1.35) * 2.2 * state.zoom;
+        const ctx = this.ctx;
+        const z = state.zoom;
+
+        ctx.save();
+        ctx.translate(pos.x, pos.y - bob);
+
+        ctx.beginPath();
+        ctx.arc(0, -12 * z, 3.5 * z, 0, Math.PI * 2);
+        ctx.fillStyle = '#fde4d4';
+        ctx.fill();
+
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(-3.5 * z, -17.5 * z, 7 * z, 3 * z);
+
+        ctx.fillStyle = '#172554';
+        ctx.fillRect(-4 * z, -9 * z, 8 * z, 10 * z);
+
+        ctx.fillStyle = '#ca8a04';
+        ctx.fillRect(-0.8 * z, -8 * z, 1.6 * z, 6.5 * z);
+
+        ctx.strokeStyle = 'rgba(234,179,8,0.5)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-4 * z, -9 * z, 8 * z, 10 * z);
+
+        ctx.restore();
+
+        const headTop = pos.y - bob - 16 * z;
+        this.drawWalkerIdentityTag(pos.x, headTop - 4, { type: 'owner', id: '_hotel_owner' });
+    },
+
     drawWalkers() {
         state.walkers.forEach(w => {
             const screen = isoToScreen(w.c, w.r, w.f, this.canvas.width, this.canvas.height);
@@ -774,6 +917,9 @@ const CanvasRenderer = {
                 this.ctx.arc(sleepPos.x, sleepPos.y, 3 * state.zoom, 0, Math.PI * 2);
                 this.ctx.fillStyle = '#fed7aa';
                 this.ctx.fill();
+                const sz = state.zoom;
+                const headTopS = sleepPos.y - 3 * sz;
+                this.drawWalkerIdentityTag(sleepPos.x, headTopS - 4, w);
                 return;
             }
 
@@ -829,6 +975,11 @@ const CanvasRenderer = {
 
             this.ctx.restore();
 
+            const z = state.zoom;
+            const headTop = pos.y - walkBob - (w.type === 'vip' ? 21 : 15.5) * z;
+            const moodLift = (w.moodText && w.moodTimer > 0) ? 24 * z : 0;
+            this.drawWalkerIdentityTag(pos.x, headTop - 3 - moodLift, w);
+
             // Dialogue speech balloons
             if (w.moodText && w.moodTimer > 0) {
                 this.ctx.fillStyle = '#ffffff';
@@ -849,6 +1000,161 @@ const CanvasRenderer = {
                 this.ctx.fillText(w.moodText, pos.x, bY - 2);
             }
         });
+    },
+
+    /** Manager walk: Wolf-style raycast in the hotel floor footprint (perimeter + elevator pillar). */
+    drawManagerRaycastView() {
+        const ctx = this.ctx;
+        const W = this.canvas.width;
+        const H = this.canvas.height;
+        const M = state.managerWalk;
+        if (!M) return;
+
+        const px = M.x;
+        const pz = M.z;
+        const ang = M.yaw;
+        const horizon = H * 0.46;
+        const fov = Math.PI / 2.15;
+
+        ctx.fillStyle = '#070b18';
+        ctx.fillRect(0, 0, W, horizon * 0.55);
+        const skyG = ctx.createLinearGradient(0, 0, 0, horizon);
+        skyG.addColorStop(0, '#1a2a52');
+        skyG.addColorStop(1, '#0c1224');
+        ctx.fillStyle = skyG;
+        ctx.fillRect(0, 0, W, horizon);
+
+        const flG = ctx.createLinearGradient(0, horizon, 0, H);
+        flG.addColorStop(0, '#2a1810');
+        flG.addColorStop(1, '#050302');
+        ctx.fillStyle = flG;
+        ctx.fillRect(0, horizon, W, H - horizon);
+
+        const ebL = ELEVATOR_C + 0.08;
+        const ebR = ELEVATOR_C + 0.42;
+        const ebT = ELEVATOR_R + 0.08;
+        const ebB = ELEVATOR_R + 0.42;
+
+        for (let col = 0; col < W; col++) {
+            const rayAng = ang + (col / W - 0.5) * fov;
+            const rdx = Math.sin(rayAng);
+            const rdz = Math.cos(rayAng);
+            let bestT = 1e9;
+            let wallKind = 'none';
+
+            const tryHit = (t, kind) => {
+                if (t > 0.004 && t < bestT) {
+                    bestT = t;
+                    wallKind = kind;
+                }
+            };
+
+            if (Math.abs(rdx) > 1e-7) {
+                const t0 = (0 - px) / rdx;
+                const z0 = pz + t0 * rdz;
+                if (t0 > 0 && z0 >= 0 && z0 <= GRID_ROWS) tryHit(t0, 'w');
+                const t1 = (GRID_COLS - px) / rdx;
+                const z1 = pz + t1 * rdz;
+                if (t1 > 0 && z1 >= 0 && z1 <= GRID_ROWS) tryHit(t1, 'e');
+            }
+            if (Math.abs(rdz) > 1e-7) {
+                const t0 = (0 - pz) / rdz;
+                const x0 = px + t0 * rdx;
+                if (t0 > 0 && x0 >= 0 && x0 <= GRID_COLS) tryHit(t0, 'n');
+                const t1 = (GRID_ROWS - pz) / rdz;
+                const x1 = px + t1 * rdx;
+                if (t1 > 0 && x1 >= 0 && x1 <= GRID_COLS) tryHit(t1, 's');
+            }
+
+            if (Math.abs(rdx) > 1e-7) {
+                for (const vx of [ebL, ebR]) {
+                    const t = (vx - px) / rdx;
+                    const zz = pz + t * rdz;
+                    if (t > 0 && zz >= ebT && zz <= ebB) tryHit(t, 'p');
+                }
+            }
+            if (Math.abs(rdz) > 1e-7) {
+                for (const vz of [ebT, ebB]) {
+                    const t = (vz - pz) / rdz;
+                    const xx = px + t * rdx;
+                    if (t > 0 && xx >= ebL && xx <= ebR) tryHit(t, 'p');
+                }
+            }
+
+            if (bestT >= 1e8) continue;
+
+            const perp = bestT * Math.cos(rayAng - ang);
+            const colH = Math.min(H * 2.2, H * 0.78 / Math.max(0.04, perp));
+            const top = horizon - colH / 2;
+            const bot = horizon + colH / 2;
+            const shade = Math.min(1, 1.05 / (1 + bestT * 0.9));
+
+            let r0 = 55;
+            let g0 = 62;
+            let b0 = 82;
+            if (wallKind === 'n' || wallKind === 's') {
+                r0 = 72;
+                g0 = 80;
+                b0 = 108;
+            } else if (wallKind === 'e' || wallKind === 'w') {
+                r0 = 88;
+                g0 = 92;
+                b0 = 118;
+            } else if (wallKind === 'p') {
+                r0 = 38;
+                g0 = 42;
+                b0 = 52;
+            }
+            ctx.fillStyle = `rgb(${Math.round(r0 * shade + 10)},${Math.round(g0 * shade + 12)},${Math.round(b0 * shade + 18)})`;
+            ctx.fillRect(col, Math.max(0, top), 1, Math.max(0, Math.min(H, bot) - Math.max(0, top)));
+        }
+
+        for (let i = 1; i <= 14; i++) {
+            const t = i / 14;
+            const y = horizon + t * (H - horizon);
+            ctx.strokeStyle = `rgba(90,40,20,${0.22 * (1 - t)})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(W, y);
+            ctx.stroke();
+        }
+
+        ctx.save();
+        ctx.translate(W / 2, horizon * 0.72);
+        ctx.rotate(-ang);
+        ctx.strokeStyle = 'rgba(251,191,36,0.35)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -8);
+        ctx.lineTo(0, -22);
+        ctx.stroke();
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.moveTo(0, -26);
+        ctx.lineTo(-5, -14);
+        ctx.lineTo(5, -14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        ctx.fillStyle = 'rgba(10,14,30,0.82)';
+        const bw = Math.min(520, W - 24);
+        const bx = (W - bw) / 2;
+        const by = H - 56;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx, by, bw, 46, 10);
+        else ctx.rect(bx, by, bw, 46);
+        ctx.fill();
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 12px Inter';
+        ctx.textAlign = 'center';
+        const flab = M.f === 0 ? 'Lobby' : `Guest floor ${M.f}`;
+        ctx.fillText(`${flab}  ·  WASD / arrows move & turn  ·  E enter suite  ·  [ ] floors at lift  ·  Esc exits suite`, W / 2, by + 20);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px Inter';
+        const deg = (((M.yaw * 180) / Math.PI % 360) + 360) % 360;
+        ctx.fillText(`Position ~ col ${M.x.toFixed(2)}, row ${M.z.toFixed(2)}  ·  Facing ${deg.toFixed(0)}°`, W / 2, by + 38);
     },
 
     drawFirstPersonView() {

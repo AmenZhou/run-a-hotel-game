@@ -48,7 +48,24 @@ const state = {
     campaignText: "",
     fpFloor: 1,
     fpRoom: null,      // {f, r, c} — which room interior to show; null = corridor view
-    fpRoomAngle: 0     // degrees; 0 = facing window wall, 180 = facing door
+    fpRoomAngle: 0,    // degrees; 0 = facing window wall, 180 = facing door
+    /** Manager walk: FP movement on floor `f`; x = column axis 0..GRID_COLS, z = row axis 0..GRID_ROWS; yaw radians. */
+    managerWalk: { f: 1, x: 0.55, z: 0.45, yaw: 0 },
+    /** Named proprietor shown in the lobby (isometric) and header; `animFrame` is runtime only. */
+    hotelOwner: { name: 'Jordan Blake', title: 'Proprietor', animFrame: 0 },
+    /** Light progression / variety counters (save/load). */
+    fun: {
+        checkouts: 0,
+        tipsTotal: 0,
+        rushHourTicks: 0,
+        lastCheckoutAt: 0
+    },
+    /** Per-department training (0–max). Cash upgrades in Management; each job levels independently. */
+    staffTrainingLevels: {
+        housekeeper: 0,
+        builder: 0,
+        receptionist: 0
+    }
 };
 
 // Constant Pricing & Values
@@ -69,9 +86,40 @@ const CONSTANTS = {
         steel: 6
     },
     staff: {
-        housekeeper: { cost: 500, wage: 2 },
-        builder: { cost: 800, wage: 3 },
-        receptionist: { cost: 400, wage: 3 }
+        /** One-time hiring fee only — no recurring payroll (`simulationStep` does not deduct wages). */
+        housekeeper: { cost: 30 },
+        builder: { cost: 75 },
+        receptionist: { cost: 40 }
+    },
+    /** Staff department upgrades — cash only; each role has its own level track (see `jobs`). */
+    staffTraining: {
+        maxLevel: 5,
+        jobs: {
+            housekeeper: {
+                /** Cost to go from level L → L+1 (L = 0..maxLevel-1). */
+                upgradeCosts: [140, 280, 450, 650, 900],
+                /** Cleanliness / sec × (1 + effectPerLevel × level) for all housekeepers. */
+                effectPerLevel: 0.55
+            },
+            builder: {
+                upgradeCosts: [200, 380, 580, 820, 1100],
+                /** Automated build progress / sec × (1 + effectPerLevel × level). */
+                effectPerLevel: 0.48
+            },
+            receptionist: {
+                upgradeCosts: [150, 290, 460, 680, 950],
+                /** Per-receptionist booking bonus scales × (1 + effectPerLevel × level). */
+                effectPerLevel: 0.15
+            }
+        }
+    },
+    /** Isometric canvas zoom — buttons + mouse wheel (`renderer` / `ui` clamp to these). */
+    viewZoom: {
+        min: 0.28,
+        max: 5.5,
+        stepButton: 0.18,
+        stepWheel: 0.07,
+        reset: 1.1
     },
     roomLevels: [
         { name: "Standard Room", rent: 15, maxStars: 1 },
@@ -115,6 +163,22 @@ const AudioEngine = {
         osc2.start(now);
         osc1.stop(now + 0.4);
         osc2.stop(now + 0.4);
+    },
+    playTip() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(1320, now + 0.06);
+        gain.gain.setValueAtTime(0.09, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.14);
     },
     playBuild() {
         this.init();
@@ -313,6 +377,27 @@ function saveGame() {
         maxFloors: state.maxFloors,
         gameSpeed: state.gameSpeed,
         isoYaw: state.isoYaw ?? 0,
+        fun: state.fun
+            ? { ...state.fun, rushHourTicks: 0 }
+            : { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0 },
+        staffTrainingLevels: {
+            housekeeper: Math.min(
+                CONSTANTS.staffTraining.maxLevel,
+                Math.max(0, state.staffTrainingLevels.housekeeper | 0)
+            ),
+            builder: Math.min(
+                CONSTANTS.staffTraining.maxLevel,
+                Math.max(0, state.staffTrainingLevels.builder | 0)
+            ),
+            receptionist: Math.min(
+                CONSTANTS.staffTraining.maxLevel,
+                Math.max(0, state.staffTrainingLevels.receptionist | 0)
+            )
+        },
+        hotelOwner: {
+            name: String(state.hotelOwner?.name || 'Jordan Blake').slice(0, 32),
+            title: String(state.hotelOwner?.title || 'Proprietor').slice(0, 32)
+        },
         hotel: state.hotel.map(floor =>
             floor.map(row =>
                 row.map(cell => ({
@@ -343,6 +428,37 @@ function loadGame() {
         state.maxFloors = snap.maxFloors ?? state.maxFloors;
         state.gameSpeed = snap.gameSpeed ?? 1;
         state.isoYaw = snap.isoYaw ?? 0;
+        state.fun = {
+            checkouts: 0,
+            tipsTotal: 0,
+            rushHourTicks: 0,
+            lastCheckoutAt: 0,
+            ...(snap.fun && typeof snap.fun === 'object' ? snap.fun : {}),
+            rushHourTicks: 0
+        };
+        const cap = CONSTANTS.staffTraining.maxLevel;
+        const clampLv = v => Math.min(cap, Math.max(0, v | 0));
+        if (snap.staffTrainingLevels && typeof snap.staffTrainingLevels === 'object') {
+            state.staffTrainingLevels.housekeeper = clampLv(snap.staffTrainingLevels.housekeeper);
+            state.staffTrainingLevels.builder = clampLv(snap.staffTrainingLevels.builder);
+            state.staffTrainingLevels.receptionist = clampLv(snap.staffTrainingLevels.receptionist);
+        } else {
+            // Legacy saves (housekeeping only, max was 3 — still valid under new cap)
+            state.staffTrainingLevels.housekeeper = clampLv(snap.hkTrainingLevel);
+            state.staffTrainingLevels.builder = 0;
+            state.staffTrainingLevels.receptionist = 0;
+        }
+        if (!state.managerWalk || typeof state.managerWalk !== 'object') {
+            state.managerWalk = { f: 1, x: 0.55, z: 0.45, yaw: 0 };
+        }
+        if (snap.hotelOwner && typeof snap.hotelOwner === 'object') {
+            state.hotelOwner = state.hotelOwner || {};
+            state.hotelOwner.name = String(snap.hotelOwner.name || state.hotelOwner.name || 'Jordan Blake').slice(0, 32);
+            state.hotelOwner.title = String(snap.hotelOwner.title || state.hotelOwner.title || 'Proprietor').slice(0, 32);
+            state.hotelOwner.animFrame = 0;
+        } else {
+            state.hotelOwner = { name: 'Jordan Blake', title: 'Proprietor', animFrame: 0 };
+        }
         state.hotel = snap.hotel;
         state.walkers = [];
         state.particles = [];
@@ -503,7 +619,10 @@ function spawnWalker(type, assignedRoomId = null) {
         shirtColor: type === 'vip' ? '#f59e0b' : (isGuest ? ['#ef4444', '#10b981', '#3b82f6', '#a855f7', '#ec4899'][Math.floor(Math.random() * 5)] : (type === 'housekeeper' ? '#db2777' : '#d97706')),
         moodText: type === 'vip' ? '👑 VIP' : '',
         moodTimer: type === 'vip' ? 5.0 : 0,
-        stayTime: type === 'vip' ? 30 : 15 + Math.floor(Math.random() * 20) // VIPs stay longer!
+        // Slightly shorter stays than early builds — more checkouts = steadier cash dopamine
+        stayTime: type === 'vip'
+            ? 18 + Math.floor(Math.random() * 10)
+            : 10 + Math.floor(Math.random() * 14)
     };
 
     if (type === 'receptionist') {
@@ -581,9 +700,9 @@ function triggerGuestBooking() {
         return;
     }
 
-    // Checkin odds boost from star rating + receptionists
-    const baseChance = 0.25;
-    const recBonus = state.staff.receptionist * 0.2;
+    // Checkin odds boost from star rating + receptionists (+ rush hour)
+    const baseChance = 0.32;
+    const recBonus = state.staff.receptionist * 0.2 * getReceptionistBookingMultiplier();
     const ratingBonus = Number(getHotelRating()) * 0.1;
     let finalChance = baseChance + recBonus + ratingBonus;
 
@@ -591,13 +710,20 @@ function triggerGuestBooking() {
     if (state.campaignActive) {
         finalChance *= 2.0;
     }
+    if (state.fun && state.fun.rushHourTicks > 0) {
+        finalChance *= 1.6;
+    }
 
     const roll = Math.random();
     console.log(`[booking] Vacant: ${vacant.id} | chance=${finalChance.toFixed(2)} roll=${roll.toFixed(2)} → ${roll < finalChance ? 'BOOKED' : 'no show'}`);
     if (roll < finalChance) {
-        // Spawn walker guest heading to lobby desk
-        const guestId = spawnWalker('guest', vacant);
+        // Deluxe+ rooms can rarely attract a VIP walk-in
+        const wantVip = vacant.level >= 2 && Math.random() < 0.14;
+        const guestId = spawnWalker(wantVip ? 'vip' : 'guest', vacant);
         vacant.guestId = guestId; // Reserve room spot
+        if (wantVip) {
+            showToast('VIP inquiry!', 'A high-roller wants your upgraded suite.', 'success');
+        }
     }
 }
 
@@ -638,28 +764,114 @@ function moveTowards(w, f, r, c, u, v, dt) {
     }
 }
 
+const STAFF_TRAINING_JOB_KEYS = ['housekeeper', 'builder', 'receptionist'];
+
+function getStaffTrainingLevel(job) {
+    const cap = CONSTANTS.staffTraining.maxLevel;
+    if (!STAFF_TRAINING_JOB_KEYS.includes(job) || !state.staffTrainingLevels) return 0;
+    return Math.min(cap, Math.max(0, state.staffTrainingLevels[job] | 0));
+}
+
+/** Per-second cleanliness gain while a housekeeper is actively housekeeping (scaled by training). */
+function getHousekeeperCleanRate() {
+    const base = 30;
+    const lv = getStaffTrainingLevel('housekeeper');
+    const e = CONSTANTS.staffTraining.jobs.housekeeper.effectPerLevel;
+    return base * (1 + e * lv);
+}
+
+/** Automated builder construction progress per second (before × dt × gameSpeed). */
+function getBuilderConstructionRate() {
+    const base = 0.8;
+    const lv = getStaffTrainingLevel('builder');
+    const e = CONSTANTS.staffTraining.jobs.builder.effectPerLevel;
+    return base * (1 + e * lv);
+}
+
+/** Multiplier on the per-receptionist booking odds contribution (see `triggerGuestBooking`). */
+function getReceptionistBookingMultiplier() {
+    const lv = getStaffTrainingLevel('receptionist');
+    const e = CONSTANTS.staffTraining.jobs.receptionist.effectPerLevel;
+    return 1 + e * lv;
+}
+
+/**
+ * True if this housekeeper is already reserved for this room (walking, in elevator, or cleaning).
+ * Idle walkers are not counted — elevator states must use `_preElevatorState === 'heading_to_clean'`
+ * so a second HK does not pick the same dirty suite while the first is between floors.
+ */
+function isHousekeeperCommittedToRoom(ww, room) {
+    if (ww.type !== 'housekeeper' || ww.assignedRoom !== room) return false;
+    if (ww.state === 'heading_to_clean' || ww.state === 'housekeeping') return true;
+    if ((ww.state === 'elevator_up' || ww.state === 'elevator_down') && ww._preElevatorState === 'heading_to_clean') {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Dirty room not already claimed by another housekeeper (heading, elevator leg, or cleaning).
+ */
+function findDirtyRoomForHousekeeper(selfWalker) {
+    for (let f = 1; f < state.hotel.length; f++) {
+        for (let r = 0; r < GRID_ROWS; r++) {
+            for (let c = 0; c < GRID_COLS; c++) {
+                const room = state.hotel[f][r][c];
+                if (room.type !== 'guest' || room.status !== 'dirty') continue;
+                const claimed = state.walkers.some(ww =>
+                    ww.id !== selfWalker.id &&
+                    isHousekeeperCommittedToRoom(ww, room)
+                );
+                if (!claimed) return { room, f, r, c };
+            }
+        }
+    }
+    return null;
+}
+
+/** Builder reserved for this build site (including elevator transit toward the site). */
+function isBuilderCommittedToRoom(ww, room) {
+    if (ww.type !== 'builder' || ww.assignedRoom !== room) return false;
+    if (ww.state === 'heading_to_build' || ww.state === 'building') return true;
+    if ((ww.state === 'elevator_up' || ww.state === 'elevator_down') && ww._preElevatorState === 'heading_to_build') {
+        return true;
+    }
+    return false;
+}
+
+/** Building room not already claimed by another builder. */
+function findBuildingSiteForBuilder(selfWalker) {
+    for (let f = 1; f < state.hotel.length; f++) {
+        for (let r = 0; r < GRID_ROWS; r++) {
+            for (let c = 0; c < GRID_COLS; c++) {
+                const room = state.hotel[f][r][c];
+                if (room.type !== 'guest' || room.status !== 'building') continue;
+                const claimed = state.walkers.some(ww =>
+                    ww.id !== selfWalker.id &&
+                    isBuilderCommittedToRoom(ww, room)
+                );
+                if (!claimed) return { room, f, r, c };
+            }
+        }
+    }
+    return null;
+}
+
 // Main Entity Logic State Updates
 function updateWalkers(dt) {
     // 1. Assign automated builders to projects
     if (state.staff.builder > 0) {
         state.walkers.forEach(w => {
             if (w.type === 'builder' && w.state === 'idle') {
-                // Find unfinished room
-                for (let f = 1; f < state.hotel.length; f++) {
-                    for (let r = 0; r < GRID_ROWS; r++) {
-                        for (let c = 0; c < GRID_COLS; c++) {
-                            const room = state.hotel[f][r][c];
-                            if (room.type === 'guest' && room.status === 'building') {
-                                w.assignedRoom = room;
-                                w.state = 'heading_to_build';
-                                w.targetF = f; w.targetR = r; w.targetC = c;
-                                w.targetU = 0.35; w.targetV = 0.35;
-                                break;
-                            }
-                        }
-                        if (w.state !== 'idle') break;
-                    }
-                    if (w.state !== 'idle') break;
+                const hit = findBuildingSiteForBuilder(w);
+                if (hit) {
+                    w.assignedRoom = hit.room;
+                    w.state = 'heading_to_build';
+                    w.targetF = hit.f;
+                    w.targetR = hit.r;
+                    w.targetC = hit.c;
+                    w.targetU = 0.35;
+                    w.targetV = 0.35;
                 }
             }
         });
@@ -669,21 +881,15 @@ function updateWalkers(dt) {
     if (state.staff.housekeeper > 0) {
         state.walkers.forEach(w => {
             if (w.type === 'housekeeper' && w.state === 'idle') {
-                for (let f = 1; f < state.hotel.length; f++) {
-                    for (let r = 0; r < GRID_ROWS; r++) {
-                        for (let c = 0; c < GRID_COLS; c++) {
-                            const room = state.hotel[f][r][c];
-                            if (room.type === 'guest' && room.status === 'dirty') {
-                                w.assignedRoom = room;
-                                w.state = 'heading_to_clean';
-                                w.targetF = f; w.targetR = r; w.targetC = c;
-                                w.targetU = 0.5; w.targetV = 0.5;
-                                break;
-                            }
-                        }
-                        if (w.state !== 'idle') break;
-                    }
-                    if (w.state !== 'idle') break;
+                const hit = findDirtyRoomForHousekeeper(w);
+                if (hit) {
+                    w.assignedRoom = hit.room;
+                    w.state = 'heading_to_clean';
+                    w.targetF = hit.f;
+                    w.targetR = hit.r;
+                    w.targetC = hit.c;
+                    w.targetU = 0.5;
+                    w.targetV = 0.5;
                 }
             }
         });
@@ -802,6 +1008,35 @@ function updateWalkers(dt) {
                             }
                             state.cash += rent;
                             AudioEngine.playCash();
+
+                            if (!state.fun) {
+                                state.fun = { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0 };
+                            }
+                            state.fun.checkouts++;
+                            const nowMs = typeof performance !== 'undefined' ? performance.now() : 0;
+                            let tip = 0;
+                            if (Math.random() < 0.4) {
+                                tip = Math.max(1, Math.round(rent * (0.07 + Math.random() * 0.13)));
+                                state.cash += tip;
+                                state.fun.tipsTotal += tip;
+                                AudioEngine.playTip();
+                                const scr2 = isoToScreen(w.c, w.r, w.f, CanvasRenderer.canvas.width, CanvasRenderer.canvas.height);
+                                const tipPos = getIsoLoc(scr2.x, scr2.y, 0.55, 0.45, 0.72);
+                                addParticle(tipPos.x, tipPos.y, `+${tip} tip`, '#fbbf24', 0.15, -0.95, 10, 'text');
+                            }
+                            const dtCombo = nowMs - (state.fun.lastCheckoutAt || 0);
+                            if (state.fun.lastCheckoutAt > 0 && dtCombo < 10_000 && dtCombo > 0) {
+                                const combo = Math.min(35, 4 + Math.round(rent * 0.08));
+                                state.cash += combo;
+                                AudioEngine.playTip();
+                                showToast('Combo payout!', `Back-to-back checkouts — +$${combo} bonus.`, 'success');
+                            }
+                            state.fun.lastCheckoutAt = nowMs;
+
+                            const n = state.fun.checkouts;
+                            if ([1, 5, 10, 25, 50, 100].includes(n)) {
+                                showToast('Milestone', `${n} guest stays completed — keep building!`, 'success');
+                            }
                             
                             // Cash particles floating
                             const scr = isoToScreen(w.c, w.r, w.f, CanvasRenderer.canvas.width, CanvasRenderer.canvas.height);
@@ -830,7 +1065,7 @@ function updateWalkers(dt) {
                     const room = w.assignedRoom;
                     if (room && room.status === 'building') {
                         // Speed up construction
-                        room.buildProgress = Math.min(100, room.buildProgress + 0.8 * dt * state.gameSpeed);
+                        room.buildProgress = Math.min(100, room.buildProgress + getBuilderConstructionRate() * dt * state.gameSpeed);
                         
                         // Spawn metal sparks
                         if (Math.random() < 0.3) {
@@ -847,12 +1082,14 @@ function updateWalkers(dt) {
                             showToast("Construction Complete!", "Automatic builders finished room.", "success");
                             populateUpgradeSelect();
                             w.state = 'idle';
+                            w.assignedRoom = null;
                             w.targetF = 0; w.targetR = 0; w.targetC = 1;
                             w.targetU = 0.7; w.targetV = 0.5;
                         }
                     } else {
                         // Finished
                         w.state = 'idle';
+                        w.assignedRoom = null;
                         w.targetF = 0; w.targetR = 0; w.targetC = 1;
                         w.targetU = 0.7; w.targetV = 0.5;
                     }
@@ -863,7 +1100,7 @@ function updateWalkers(dt) {
                 else if (w.state === 'housekeeping') {
                     const room = w.assignedRoom;
                     if (room && room.status === 'dirty') {
-                        room.cleanliness += 30 * dt * state.gameSpeed; // ~3 seconds to clean (matches construction speed)
+                        room.cleanliness += getHousekeeperCleanRate() * dt * state.gameSpeed;
                         
                         // Sweep dust clouds
                         if (Math.random() < 0.25) {
@@ -878,11 +1115,13 @@ function updateWalkers(dt) {
                             room.status = 'ready';
                             showToast("Room Sanitized!", "Vacant suite reopened for booking.", "success");
                             w.state = 'idle';
+                            w.assignedRoom = null;
                             w.targetF = 0; w.targetR = 0; w.targetC = 0;
                             w.targetU = 0.2; w.targetV = 0.6;
                         }
                     } else {
                         w.state = 'idle';
+                        w.assignedRoom = null;
                         w.targetF = 0; w.targetR = 0; w.targetC = 0;
                         w.targetU = 0.2; w.targetV = 0.6;
                     }
@@ -892,10 +1131,135 @@ function updateWalkers(dt) {
     }
 }
 
+// ─── Manager walk (first-person locomotion) ─────────────────────────────────
+window._mgrKeys = window._mgrKeys || {};
+
+function isManagerWalkCell(f, r, c) {
+    if (f < 0 || f >= state.hotel.length) return false;
+    if (r < 0 || c < 0 || r >= GRID_ROWS || c >= GRID_COLS) return false;
+    const cell = state.hotel[f][r][c];
+    return cell.type === 'guest' || cell.type === 'empty' || cell.type === 'lobby';
+}
+
+const MANAGER_RADIUS = 0.072;
+const MANAGER_PILLAR_CX = ELEVATOR_C + ELEVATOR_U;
+const MANAGER_PILLAR_CZ = ELEVATOR_R + ELEVATOR_V;
+const MANAGER_PILLAR_R = 0.11;
+
+function canManagerStandAt(f, x, z) {
+    const corners = [
+        [x - MANAGER_RADIUS, z - MANAGER_RADIUS],
+        [x + MANAGER_RADIUS, z - MANAGER_RADIUS],
+        [x - MANAGER_RADIUS, z + MANAGER_RADIUS],
+        [x + MANAGER_RADIUS, z + MANAGER_RADIUS]
+    ];
+    for (let i = 0; i < corners.length; i++) {
+        const cx = corners[i][0];
+        const cz = corners[i][1];
+        const c = Math.floor(cx);
+        const r = Math.floor(cz);
+        if (!isManagerWalkCell(f, r, c)) return false;
+    }
+    const dx = x - MANAGER_PILLAR_CX;
+    const dz = z - MANAGER_PILLAR_CZ;
+    if (dx * dx + dz * dz < (MANAGER_PILLAR_R + MANAGER_RADIUS) * (MANAGER_PILLAR_R + MANAGER_RADIUS)) {
+        return false;
+    }
+    return true;
+}
+
+function clampManagerToValid(f, x, z) {
+    let nx = Math.max(MANAGER_RADIUS, Math.min(GRID_COLS - MANAGER_RADIUS, x));
+    let nz = Math.max(MANAGER_RADIUS, Math.min(GRID_ROWS - MANAGER_RADIUS, z));
+    if (canManagerStandAt(f, nx, nz)) return { x: nx, z: nz };
+    if (canManagerStandAt(f, nx, z)) return { x: nx, z };
+    if (canManagerStandAt(f, x, nz)) return { x, z: nz };
+    return { x, z };
+}
+
+/** Open 3D suite when standing in a guest cell and pressing E (manager mode). */
+function tryManagerEnterSuite() {
+    if (state.viewMode !== 'manager' || state.fpRoom) return;
+    const M = state.managerWalk;
+    if (!M) return;
+    const c = Math.floor(M.x);
+    const r = Math.floor(M.z);
+    const cell = state.hotel[M.f]?.[r]?.[c];
+    if (!cell || cell.type !== 'guest') {
+        showToast('No suite here', 'Walk into a guest suite footprint and press E to enter.', 'info');
+        return;
+    }
+    state.fpRoom = { f: M.f, r, c };
+    state.fpFloor = M.f;
+    state.fpRoomAngle = (M.yaw * 180) / Math.PI;
+    showToast('Suite entered', 'Drag to look around. Esc or ← Back leaves the room.', 'success');
+}
+
+/** Change floor when standing near the elevator core (manager mode). dir: +1 or -1 */
+function tryManagerElevatorFloor(dir) {
+    if (state.viewMode !== 'manager' || state.fpRoom) return;
+    const M = state.managerWalk;
+    if (!M) return;
+    const dx = M.x - MANAGER_PILLAR_CX;
+    const dz = M.z - MANAGER_PILLAR_CZ;
+    if (dx * dx + dz * dz > 0.34 * 0.34) {
+        showToast('Elevator', 'Stand closer to the lift core (center column) to change floors.', 'info');
+        return;
+    }
+    const nf = M.f + dir;
+    if (nf < 0 || nf >= state.hotel.length) return;
+    if (!canManagerStandAt(nf, M.x, M.z)) {
+        showToast('Elevator', 'That floor has no walkable space at this spot — try another column.', 'warning');
+        return;
+    }
+    M.f = nf;
+    state.fpFloor = nf;
+    showToast('Floor change', `Now on floor ${nf}.`, 'success');
+}
+
+function updateManagerWalk(dt) {
+    if (state.viewMode !== 'manager' || state.fpRoom) return;
+    const M = state.managerWalk;
+    if (!M) return;
+
+    const keys = window._mgrKeys || {};
+    const turn = (keys.ArrowLeft || keys.KeyA ? 1 : 0) - (keys.ArrowRight || keys.KeyD ? 1 : 0);
+    M.yaw += turn * 2.4 * dt * Math.PI;
+
+    const mv = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+    if (mv !== 0) {
+        const speed = 1.25 * state.gameSpeed;
+        const step = mv * speed * dt;
+        const nx = M.x + Math.sin(M.yaw) * step;
+        const nz = M.z + Math.cos(M.yaw) * step;
+        let cx = nx;
+        let cz = nz;
+        if (!canManagerStandAt(M.f, nx, nz)) {
+            if (canManagerStandAt(M.f, nx, M.z)) cx = nx;
+            else if (canManagerStandAt(M.f, M.x, nz)) cz = nz;
+            else cx = M.x;
+            cz = M.z;
+        }
+        const cl = clampManagerToValid(M.f, cx, cz);
+        M.x = cl.x;
+        M.z = cl.z;
+    }
+    state.fpFloor = M.f;
+}
+
+function resetManagerWalkSpawn() {
+    state.managerWalk = { f: 1, x: 0.55, z: 0.45, yaw: 0 };
+    state.fpFloor = 1;
+}
+
 // Expose game internals for the AI agent
 window.state      = state;
 window.CONSTANTS  = CONSTANTS;
 window.GRID_ROWS  = GRID_ROWS;
 window.GRID_COLS  = GRID_COLS;
 window.addFloor   = addFloor;
+window.updateManagerWalk = updateManagerWalk;
+window.tryManagerEnterSuite = tryManagerEnterSuite;
+window.tryManagerElevatorFloor = tryManagerElevatorFloor;
+window.resetManagerWalkSpawn = resetManagerWalkSpawn;
 

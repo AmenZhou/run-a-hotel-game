@@ -57,7 +57,10 @@ const Room3DRenderer = (() => {
                     color:#64748b;font:10px/1 Inter,sans-serif;padding:7px 12px;
                     border-radius:8px;backdrop-filter:blur(4px);">Drag to rotate</div>`;
             parent.appendChild(uiOverlay);
-            document.getElementById('room3d-back').addEventListener('click', () => { state.fpRoom = null; });
+            document.getElementById('room3d-back').addEventListener('click', () => {
+                state.fpRoom = null;
+                Room3DRenderer.hide();
+            });
 
             // ── Three.js renderer ─────────────────────────────────────────────
             renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });

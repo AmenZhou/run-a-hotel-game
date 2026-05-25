@@ -108,10 +108,10 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 
 **Upgrade a room:** costs $800 + 12 wood + 6 steel. Room must be status=ready and not occupied.
 
-**Staff (hire cost + ongoing wage/sec):**
-  housekeeper  $500, $2/sec  — auto-cleans dirty rooms; without one dirty rooms never rebook
-  builder      $800, $3/sec  — speeds up room construction
-  receptionist $400, $3/sec  — +20% guest check-in rate per hire
+**Staff (one-time hiring fee only — no per-second wages):**
+  housekeeper  $30  — auto-cleans dirty rooms; without one dirty rooms never rebook
+  builder      $75  — speeds up room construction
+  receptionist $40  — +20% guest check-in rate per hire
 
 **Material base prices:** concrete $20, wood $12, steel $60. Buy when below base = good deal.
 
@@ -124,7 +124,7 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 5. **Builder shortens dead time.** Rooms earn nothing while building — a builder pays back fast.
 6. **Buy materials when cheap.** Concrete/wood/steel below base price = buy in bulk.
 7. **Set speed to 4×** as soon as the hotel is stable — idle time is lost money.
-8. **Never go bankrupt.** If net/sec is deeply negative and cash is low, wait. Otherwise invest aggressively.
+8. **Cash still matters for builds and materials.** Staff do not drain cash over time after hiring — only builds, upgrades, and material buys do.
 
 ## Affordability rule
 
@@ -147,7 +147,7 @@ Return ONLY a valid JSON object — no markdown, no explanation outside the JSON
 
 Notes:
 - build_room: takes no params — builds in the next available empty cell automatically.
-- fire_staff: dismisses one staff of the given type, immediately removing their wage. Use when wages exceed income and you cannot recover.
+- fire_staff: dismisses one staff of the given type (frees a slot; there is no ongoing wage to remove).
 - set_speed 4: do this on turn 1 or as soon as the hotel is stable — idle time is wasted money.`;
 
 // ─── Read game state from the live page ──────────────────────────────────────
@@ -189,10 +189,7 @@ async function readState(page) {
             rm => rm.status === 'ready' && !rm.occupied && (rm.level || 0) < 4
         ).map(({ f, r, c, level }) => ({ f, r, c, level }));
 
-        let totalWages = 0;
-        for (const [k, v] of Object.entries(s.staff)) {
-            totalWages += v * (C.staff[k]?.wage ?? 0);
-        }
+        const totalWages = 0; // Game uses hire-fee-only staff — no wagesPerSec drain
 
         let estRentPerSec = 0;
         for (const rm of rooms) {
@@ -255,6 +252,11 @@ async function readState(page) {
             },
             costs,
             buildButtonEnabled,
+            staffTrainingLevels: {
+                housekeeper: Math.min(C.staffTraining.maxLevel, Math.max(0, (s.staffTrainingLevels && s.staffTrainingLevels.housekeeper) | 0)),
+                builder: Math.min(C.staffTraining.maxLevel, Math.max(0, (s.staffTrainingLevels && s.staffTrainingLevels.builder) | 0)),
+                receptionist: Math.min(C.staffTraining.maxLevel, Math.max(0, (s.staffTrainingLevels && s.staffTrainingLevels.receptionist) | 0))
+            },
             affordability: {
                 canBuildRoom: buildButtonEnabled &&
                     builtCount < s.maxRooms &&

@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.3.21] - 2026-05-25
+### Added
+- **360° isometric orbit** — In **Inside** and **Exterior** views, spin the hotel continuously: **right-drag** or **Alt+left-drag** on the canvas (same `isoYaw` as ⟲ ⟳), plus **Shift+mouse wheel** for stepped rotation. Context menu suppressed on the canvas while in those views so right-drag doesn’t open the browser menu.
+
+## [0.3.20] - 2026-05-25
+### Added
+- **Hotel proprietor** — `state.hotelOwner` (`name`, `title`) persisted in **save/load**; default **Jordan Blake / Proprietor**. A small suited figure stands in the **lobby** (Inside view) with an **OWNER** identity tag; subtle idle bob. Header **Owner** chip + **Management → Proprietor** card to edit name/title and **Save proprietor profile**.
+
+## [0.3.19] - 2026-05-25
+### Added
+- **Manager walk** — Fourth viewport mode (cycle the eye button after **1st Person**): first-person **locomotion** on each floor via a lightweight **raycast** (perimeter + elevator pillar). **WASD / arrows** move and turn; **E** opens a **guest suite** in the same 3D interior as classic FP; **Esc** or **← Back** exits the suite; **[** / **]** changes floors when standing near the **lift core**. The canvas uses **`tabindex="0"`** so keys work after the mode is selected (it auto-focuses).
+
+## [0.3.17] - 2026-05-25
+### Fixed
+- **Multiple housekeepers targeting one dirty room** — While the first worker was in the **elevator** (`elevator_up` / `elevator_down`), their state was no longer `heading_to_clean`, so `findDirtyRoomForHousekeeper` did not treat the suite as claimed. Commitment now includes elevator legs when `_preElevatorState === 'heading_to_clean'`. The same pattern is applied to **builders** (`heading_to_build`). **Idle** staff now clear **`assignedRoom`** after finishing a job so stale references cannot confuse assignment.
+
+## [0.3.16] - 2026-05-25
+### Added
+- **Stronger zoom** — `CONSTANTS.viewZoom`: range **0.28×–5.5×**, larger **+ / −** steps, **mouse wheel** on the canvas zooms in/out (Inside / Exterior views; skipped in first-person).
+- **Walker identity tags** — Two-line pill above each person: **STAFF** or **GUEST**, plus role (**Housekeeper**, **Builder**, **Reception**, **Guest**, **VIP Guest**). Color-coded borders; shifts up when a mood bubble is showing; sleeping guests get a tag above the bed head.
+
+## [0.3.15] - 2026-05-25
+### Changed
+- **Staff department upgrades (all jobs)** — Replaced housekeeping-only `hkTrainingLevel` / `CONSTANTS.hkTraining` with per-role **`staffTrainingLevels`** and **`CONSTANTS.staffTraining`**: **housekeeper**, **builder**, and **receptionist** each have **5** cash upgrade tiers with steeper in-game effects.
+  - **Housekeeping:** cleanliness / sec × `(1 + 0.55 × level)` (was +42% per level capped at 3).
+  - **Construction:** automated `buildProgress` / sec uses **`getBuilderConstructionRate()`** × `(1 + 0.48 × level)`.
+  - **Reception:** walk-in booking bonus per receptionist × **`getReceptionistBookingMultiplier()`** `(1 + 0.15 × level)`.
+- **Save/load** — Persists `staffTrainingLevels`; **legacy** saves still load **`hkTrainingLevel`** into housekeeping only.
+
+## [0.3.14] - 2026-05-25
+### Fixed
+- **Multiple housekeepers / builders claimed the same room** — assignment scanned the grid and every idle worker grabbed the **first** matching cell. Idle workers now pick the first dirty / `building` room **not already assigned** to another worker of that type (in `heading_to_*` or active work states).
+
+### Added
+- **Housekeeping training upgrades** — global levels **0→3** (cash costs **$120 / $220 / $350** in `CONSTANTS.hkTraining.upgradeCosts`). Each level increases the in-room `cleanliness` gain by **+42%** of the base rate for **all** housekeepers (`getHousekeeperCleanRate()`). Management tab: **Upgrade training** button + level readout. Persisted in save/load as `hkTrainingLevel`; reset on New Game.
+
+## [0.3.13] - 2026-05-25
+### Removed
+- **Passive dirty-room cleaning** — dirty suites no longer slowly return to `ready` in `simulationStep`; they stay dirty until a **housekeeper** cleans them or you **click the room** on the canvas (manual sweep in `renderer.js`).
+
+## [0.3.12] - 2026-05-25
+### Changed
+- **Staff = hire fee only** — kept **one-time** recruit costs (**$30** housekeeper, **$75** builder, **$40** receptionist) but **removed all per-second wage deductions** from `simulationStep` (no payroll drain, no wage-based auto-dismiss, no “wages running out” toast). `CONSTANTS.staff` no longer defines `wage`.
+- **Ledger / Management copy** — payroll line shows **“— (hire fee only)”**; staff cards explain **no per-second wages**. AI agent prompt + `readState` treat `wagesPerSec` as **0**.
+
+## [0.3.11] - 2026-05-25
+### Changed
+- **Staff wages vs small-hotel income** — wages cut again for ~**$2/s**-scale operations: housekeeper **$0.12/s** (hire **$30**), receptionist **$0.12/s** (**$40**), builder **$0.22/s** (**$75**). One of each is **~$0.46/s** total instead of **$2/s**.
+- **Ledger readability** — rent / wages / net lines show **two decimal places** so fractional payroll is obvious.
+
+## [0.3.10] - 2026-05-25
+### Changed
+- **Staff pricing (again)** — further reduced so hiring is a light early-game expense: housekeeper **$60 / $0.50·s⁻¹**, builder **$180 / $1·s⁻¹**, receptionist **$80 / $0.50·s⁻¹** (`CONSTANTS.staff` + Management tab + agent prompt).
+
+## [0.3.9] - 2026-05-25
+### Changed
+- **Staff pricing** — hire bonuses and wages reduced so early hires pay back faster: housekeeper **$220 / $1·s⁻¹** (was $500 / $2), builder **$500 / $2** (was $800 / $3), receptionist **$260 / $1.5·s⁻¹** (was $400 / $3). Management tab copy updated; `CONSTANTS.staff` in `js/game-state.js` is the source of truth.
+
+## [0.3.8] - 2026-05-25
+### Added
+- **Momentum HUD** — header shows lifetime guest **stays**, **tips** earned, and a **rush countdown** when a booking frenzy is active
+- **Rush hour** — random ~40s waves of higher check-in odds so the lobby feels less idle
+- **Tips & combo payouts** — most checkouts roll a small **tip** (golden floaties + `playTip` chime); back-to-back checkouts within 10s grant a **combo cash bonus**
+- **Milestone toasts** — celebrate stay counts at 1, 5, 10, 25, 50, and 100 completed stays
+- **VIP walk-ins** — Deluxe (lvl 2+) vacant rooms can rarely spawn a **VIP** booking with a heads-up toast
+
+### Changed
+- **Pacing** — slightly **higher base booking chance** (0.32 vs 0.25) and **shorter guest stays** so rent hits the register more often
+
 ## [0.3.7] - 2026-05-25
 ### Fixed (AI agent)
 - **Affordability spam in JSONL** — long runs showed dozens of `blocked_action` rows where the model kept choosing `build_room` while `canBuildRoom` was false. The user prompt now ends with an explicit **Valid actions this turn** list derived from `affordability`, and illegal picks are **clamped to `wait`** with an `override` log (`affordability_clamp`) instead of burning a tick on a blocked action.

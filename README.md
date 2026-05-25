@@ -35,7 +35,7 @@
 
 | Area | What you get |
 |------|----------------|
-| **Economy** | Cash, dynamic material market, room rent by tier, wages, and game speed (1×–4×). |
+| **Economy** | Cash, dynamic material market, room rent by tier, **one-time staff hire fees** (no hourly payroll), and game speed (1×–4×). |
 | **Building** | Guest rooms from blueprint through construction to ready / occupied / dirty lifecycle. |
 | **Staff** | Housekeepers, builders, receptionists — hire, fire, and balance runway. |
 | **Views** | Inside / exterior isometric modes, optional **yaw rotation** for stacked floors, **first-person** corridor + room interiors. |
@@ -65,7 +65,7 @@ Then visit **http://localhost:8765/grand_hotel_blueprint.html**
 
 - **Build / upgrade / hire** — left panel tabs (Build, Management, Materials, …).
 - **Canvas** — click rooms to nudge construction or help clean dirty suites.
-- **View toolbar** — zoom, reset view (pan + zoom + rotation), **rotate overlook**, cycle Inside / Exterior / First-person.
+- **View toolbar** — zoom (wheel; **Shift+wheel** = **orbit** instead of zoom in Inside/Exterior), reset view, **rotate** (⟲ ⟳ or **right-drag / Alt+drag** on canvas for smooth **360°**), cycle **Inside → Exterior → 1st Person → Manager walk**. Walkers show **STAFF/GUEST** tags. **Proprietor** in lobby + header; rename under **Management → Proprietor**.
 - **Save / Load / New game** — header buttons; new games use the current starting budget (see `CHANGELOG.md`).
 
 Full mechanics and balance notes live in **`CHANGELOG.md`**.

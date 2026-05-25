@@ -87,6 +87,26 @@
                 </div>
             </div>
 
+            <div class="flex items-center gap-2.5 bg-slate-950/60 px-4 py-2 rounded-xl border border-violet-800/50">
+                <div class="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center text-violet-300">
+                    <i class="fa-solid fa-user-tie"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Owner</div>
+                    <div id="stat-owner" class="font-bold text-violet-200 text-sm max-w-[140px] truncate" title="Proprietor">Jordan Blake</div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2.5 bg-slate-950/60 px-4 py-2 rounded-xl border border-amber-900/40">
+                <div class="w-8 h-8 rounded-lg bg-amber-500/25 flex items-center justify-center text-amber-300">
+                    <i class="fa-solid fa-champagne-glasses"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Momentum</div>
+                    <div id="stat-fun" class="font-bold text-amber-200 text-sm leading-tight">0 stays · $0 tips</div>
+                </div>
+            </div>
+
             <!-- Simulation Speed Controls -->
             <div class="flex items-center bg-slate-950/60 p-1 rounded-xl border border-slate-800 gap-1">
                 <button id="speed-1x" class="px-2.5 py-1 text-xs font-bold rounded bg-amber-500 text-slate-950 transition-all">1x</button>
@@ -112,38 +132,38 @@
                 <span>Active Living World Simulation</span>
             </div>
             <div class="bg-slate-900/90 backdrop-blur-sm border border-slate-800 px-3 py-2 rounded-lg shadow-xl text-[11px] text-slate-400">
-                <p>💡 <span class="font-semibold text-slate-200">Click on rooms</span> to help construct blueprints or sweep up dirty suites manually! Use <span class="font-semibold text-slate-200">⟲ ⟳</span> to rotate the overlook.</p>
+                <p>💡 <span class="font-semibold text-slate-200">Click on rooms</span> to help construct blueprints or <span class="font-semibold text-slate-200">sweep dirty suites</span> (dirty rooms do not clean themselves). Hire housekeepers for automatic cleaning. <span class="font-semibold text-slate-200">360° overlook</span>: ⟲ ⟳ buttons, or <span class="font-semibold text-slate-200">right-drag</span> / <span class="font-semibold text-slate-200">Alt+drag</span> on the canvas, or <span class="font-semibold text-slate-200">Shift+scroll</span> to spin the building. <span class="font-semibold text-violet-300/90">Manager walk</span> (eye toggle) is first-person on foot — WASD, E for suites, [ ] at the lift. <span class="font-semibold text-amber-200/90">Rush hour</span> boosts bookings; <span class="font-semibold text-amber-200/90">tips &amp; combos</span> reward fast turnarounds.</p>
             </div>
         </div>
 
         <!-- 3D Viewport Controls & Eye Toggle -->
         <div class="absolute bottom-6 right-6 z-10 flex items-center gap-2 bg-slate-900/95 border border-slate-800 p-1.5 rounded-xl shadow-2xl">
             <!-- X-Ray Inside View Button -->
-            <button id="btn-toggle-view" class="px-3 h-10 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-lg" title="Toggle X-Ray inside view">
+            <button id="btn-toggle-view" class="px-3 h-10 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-lg" title="Cycle view: Inside → Exterior → 1st Person → Manager walk">
                 <i class="fa-solid fa-eye"></i>
                 <span id="txt-view-mode">Inside View</span>
             </button>
             <div class="w-px h-6 bg-slate-800"></div>
-            <button id="btn-zoom-in" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Zoom In">
+            <button id="btn-zoom-in" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Zoom in (or scroll wheel up on the hotel)">
                 <i class="fa-solid fa-plus"></i>
             </button>
-            <button id="btn-zoom-out" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Zoom Out">
+            <button id="btn-zoom-out" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Zoom out (or scroll wheel down on the hotel)">
                 <i class="fa-solid fa-minus"></i>
             </button>
             <button id="btn-reset-view" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Reset zoom, pan, and rotation">
                 <i class="fa-solid fa-arrows-to-dot"></i>
             </button>
             <div class="w-px h-6 bg-slate-800"></div>
-            <button id="btn-rotate-left" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Rotate overlook left (10°)">
+            <button id="btn-rotate-left" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Rotate left 10° — also: right-drag, Alt+drag, or Shift+wheel on canvas for smooth 360°">
                 <i class="fa-solid fa-rotate-left"></i>
             </button>
-            <button id="btn-rotate-right" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Rotate overlook right (10°)">
+            <button id="btn-rotate-right" class="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-all flex items-center justify-center font-bold" title="Rotate right 10° — also: right-drag, Alt+drag, or Shift+wheel on canvas for smooth 360°">
                 <i class="fa-solid fa-rotate-right"></i>
             </button>
         </div>
 
         <!-- Game Canvas -->
-        <canvas id="game-canvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+        <canvas id="game-canvas" tabindex="0" class="w-full h-full block cursor-grab active:cursor-grabbing outline-none focus:ring-2 focus:ring-violet-500/40 rounded-sm"></canvas>
     </div>
 </div>
 
@@ -392,8 +412,8 @@
                         <span id="ledger-rent" class="text-emerald-400 font-semibold">+$0/sec</span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-slate-500">Staff Wages:</span>
-                        <span id="ledger-wages" class="text-rose-400 font-semibold">-$0/sec</span>
+                        <span class="text-slate-500">Staff payroll (/sec):</span>
+                        <span id="ledger-wages" class="text-slate-400 font-semibold">— (hire fee only)</span>
                     </div>
                     <div class="flex justify-between border-t border-slate-850 pt-1.5 font-bold">
                         <span class="text-slate-300">Net Flow:</span>
@@ -405,6 +425,29 @@
             <!-- Management Hiring -->
             <div class="space-y-4">
                 <h3 class="text-xs font-bold uppercase text-amber-500 tracking-wider">Hire Specialist Operations</h3>
+
+                <!-- Hotel proprietor -->
+                <div class="bg-slate-950 border border-violet-800/40 p-4 rounded-xl flex flex-col gap-3">
+                    <div class="flex gap-2 items-center">
+                        <div class="w-10 h-10 rounded-lg bg-violet-500/15 text-violet-300 flex items-center justify-center font-bold">
+                            <i class="fa-solid fa-user-tie"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-slate-200 text-sm">Proprietor</h4>
+                            <span class="text-[9px] text-violet-400 font-bold uppercase">Visible in lobby (Inside view)</span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400">The owner stands by the reception desk. Name and title appear in the header and on their badge above the lobby.</p>
+                    <div class="grid grid-cols-1 gap-2">
+                        <label class="text-[10px] text-slate-500 font-bold uppercase">Display name</label>
+                        <input id="owner-name-input" type="text" maxlength="32" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200" placeholder="Jordan Blake" />
+                        <label class="text-[10px] text-slate-500 font-bold uppercase">Title</label>
+                        <input id="owner-title-input" type="text" maxlength="32" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200" placeholder="Proprietor" />
+                    </div>
+                    <button type="button" id="btn-owner-save" class="w-full bg-violet-800 hover:bg-violet-700 text-white font-bold py-2 rounded-xl text-xs border border-violet-600 transition-all">
+                        Save proprietor profile
+                    </button>
+                </div>
 
                 <!-- Housekeeper -->
                 <div class="bg-slate-950 border border-slate-800 p-4 rounded-xl flex flex-col gap-3">
@@ -424,16 +467,23 @@
                         </div>
                     </div>
                     <p class="text-xs text-slate-400">Instantly clean dirty checkout rooms automatically to allow new guest check-ins.</p>
-                    <div class="flex items-center justify-between text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-850">
-                        <span class="text-slate-400">Hiring Bonus: <strong class="text-emerald-400 font-semibold">$500</strong></span>
-                        <span class="text-slate-400">Wages: <strong class="text-rose-400 font-semibold">$2/sec</strong></span>
-                    </div>
+                    <p class="text-[10px] text-slate-500 bg-slate-900/80 px-2 py-1.5 rounded-lg border border-slate-800">One-time <strong class="text-emerald-400">$30</strong> hiring fee — <span class="text-slate-400">no per-second wages.</span></p>
                     <div class="flex gap-2">
                         <button onclick="hireStaff('housekeeper')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
                             <i class="fa-solid fa-plus"></i> Recruit
                         </button>
                         <button onclick="fireStaff('housekeeper')" class="flex-1 bg-rose-950 hover:bg-rose-900 text-rose-400 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-rose-800">
                             <i class="fa-solid fa-minus"></i> Dismiss
+                        </button>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-slate-800 flex flex-col gap-2">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Housekeeping training</span>
+                            <span id="hk-training-label" class="text-pink-300 font-bold">Lv 0 / 5</span>
+                        </div>
+                        <p class="text-[10px] text-slate-500">Each level makes <strong class="text-slate-400">every</strong> housekeeper clean dirty suites faster (stronger than hire-stacking alone). Multiple housekeepers each pick a <strong class="text-slate-400">different</strong> dirty suite.</p>
+                        <button type="button" id="btn-upgrade-hk" onclick="upgradeStaffTraining('housekeeper')" class="w-full bg-pink-900/35 hover:bg-pink-800/45 border border-pink-700/35 text-pink-100 font-bold py-2 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                            Upgrade training — <span id="hk-upgrade-cost">$140</span>
                         </button>
                     </div>
                 </div>
@@ -455,17 +505,24 @@
                             <div id="staff-builder-count" class="font-bold text-slate-200 text-sm">0</div>
                         </div>
                     </div>
-                    <p class="text-xs text-slate-400">Construction speed increases by <strong class="text-slate-300">50%</strong> per hired builder.</p>
-                    <div class="flex items-center justify-between text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-850">
-                        <span class="text-slate-400">Hiring Bonus: <strong class="text-emerald-400 font-semibold">$800</strong></span>
-                        <span class="text-slate-400">Wages: <strong class="text-rose-400 font-semibold">$3/sec</strong></span>
-                    </div>
+                    <p class="text-xs text-slate-400">Builders speed up automated construction; <strong class="text-slate-300">training</strong> stacks on top for a much faster crew.</p>
+                    <p class="text-[10px] text-slate-500 bg-slate-900/80 px-2 py-1.5 rounded-lg border border-slate-800">One-time <strong class="text-emerald-400">$75</strong> hiring fee — <span class="text-slate-400">no per-second wages.</span></p>
                     <div class="flex gap-2">
                         <button onclick="hireStaff('builder')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
                             <i class="fa-solid fa-plus"></i> Recruit
                         </button>
                         <button onclick="fireStaff('builder')" class="flex-1 bg-rose-950 hover:bg-rose-900 text-rose-400 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-rose-800">
                             <i class="fa-solid fa-minus"></i> Dismiss
+                        </button>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-slate-800 flex flex-col gap-2">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Crew certification</span>
+                            <span id="bld-training-label" class="text-amber-300 font-bold">Lv 0 / 5</span>
+                        </div>
+                        <p class="text-[10px] text-slate-500">Each level increases <strong class="text-slate-400">all</strong> automated builders’ hammer speed. Multiple builders each claim a <strong class="text-slate-400">different</strong> build site.</p>
+                        <button type="button" id="btn-upgrade-bld" onclick="upgradeStaffTraining('builder')" class="w-full bg-amber-900/35 hover:bg-amber-800/45 border border-amber-700/35 text-amber-100 font-bold py-2 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                            Upgrade certification — <span id="bld-upgrade-cost">$200</span>
                         </button>
                     </div>
                 </div>
@@ -487,17 +544,24 @@
                             <div id="staff-receptionist-count" class="font-bold text-slate-200 text-sm">0</div>
                         </div>
                     </div>
-                    <p class="text-xs text-slate-400">Attract guests <strong class="text-slate-300">30%</strong> quicker and handle manual check-ins instantly.</p>
-                    <div class="flex items-center justify-between text-xs bg-slate-900 p-2.5 rounded-lg border border-slate-850">
-                        <span class="text-slate-400">Hiring Bonus: <strong class="text-emerald-400 font-semibold">$400</strong></span>
-                        <span class="text-slate-400">Wages: <strong class="text-rose-400 font-semibold">$3/sec</strong></span>
-                    </div>
+                    <p class="text-xs text-slate-400">Receptionists raise check-in odds; <strong class="text-slate-300">training</strong> makes the front desk even sharper at filling vacancies.</p>
+                    <p class="text-[10px] text-slate-500 bg-slate-900/80 px-2 py-1.5 rounded-lg border border-slate-800">One-time <strong class="text-emerald-400">$40</strong> hiring fee — <span class="text-slate-400">no per-second wages.</span></p>
                     <div class="flex gap-2">
                         <button onclick="hireStaff('receptionist')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-700">
                             <i class="fa-solid fa-plus"></i> Recruit
                         </button>
                         <button onclick="fireStaff('receptionist')" class="flex-1 bg-rose-950 hover:bg-rose-900 text-rose-400 font-bold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5 border border-rose-800">
                             <i class="fa-solid fa-minus"></i> Dismiss
+                        </button>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-slate-800 flex flex-col gap-2">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Guest services training</span>
+                            <span id="rec-training-label" class="text-teal-300 font-bold">Lv 0 / 5</span>
+                        </div>
+                        <p class="text-[10px] text-slate-500">Each level multiplies how much each receptionist boosts <strong class="text-slate-400">random walk-in bookings</strong> (stacks with stars &amp; marketing).</p>
+                        <button type="button" id="btn-upgrade-rec" onclick="upgradeStaffTraining('receptionist')" class="w-full bg-teal-900/35 hover:bg-teal-800/45 border border-teal-700/35 text-teal-100 font-bold py-2 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                            Upgrade training — <span id="rec-upgrade-cost">$150</span>
                         </button>
                     </div>
                 </div>

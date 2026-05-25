@@ -10,35 +10,21 @@ function simulationStep() {
     const cdEl = document.getElementById('market-countdown');
     if (cdEl) cdEl.innerText = `Next Refresh: ${marketTimer}s`;
 
-    let totalWages = 0;
-    let totalRent = 0;
-
-    // Operational staff ledger subtraction
-    for (const staffType in state.staff) {
-        const count = state.staff[staffType];
-        totalWages += count * CONSTANTS.staff[staffType].wage;
-    }
-
-    if (totalWages > 0 && state.cash < totalWages) {
-        // Can't cover wages — dismiss one staff member (highest wage first) instead of mass layoff
-        const fireOrder = ['builder', 'receptionist', 'housekeeper'];
-        const target = fireOrder.find(t => state.staff[t] > 0);
-        if (target) {
-            state.staff[target]--;
-            const idx = state.walkers.findIndex(w => w.type === target);
-            if (idx !== -1) state.walkers.splice(idx, 1);
-            showToast('💸 Payroll Shortfall', `Could not pay wages — one ${target} has left.`, 'error');
+    // Rush hour — random demand spike (feels alive, rewards having empty rooms)
+    if (state.fun) {
+        if (state.fun.rushHourTicks > 0) {
+            state.fun.rushHourTicks--;
+            if (state.fun.rushHourTicks === 0) {
+                showToast('Rush hour over', 'Booking frenzy has calmed down.', 'info');
+            }
+        } else if (Math.random() < 0.035) {
+            state.fun.rushHourTicks = 42;
+            showToast('Rush hour!', 'Lobby is buzzing — higher check-in odds for ~40s.', 'success');
         }
-        totalWages = 0;
-        for (const staffType in state.staff) {
-            totalWages += state.staff[staffType] * CONSTANTS.staff[staffType].wage;
-        }
-    }
-    if (totalWages > 0) {
-        state.cash = Math.max(0, state.cash - totalWages);
     }
 
     // Estimate steady-state rent from currently occupied rooms
+    let totalRent = 0;
     // (actual cash arrives on checkout; this is the display estimate)
     for (let f = 1; f < state.hotel.length; f++) {
         for (let r = 0; r < GRID_ROWS; r++) {
@@ -51,23 +37,6 @@ function simulationStep() {
                     const avgStay = 25; // seconds
                     const perSec = baseRent / avgStay * (walker && walker.type === 'vip' ? 5 : 1);
                     totalRent += Math.round(perSec * 10) / 10;
-                }
-            }
-        }
-    }
-
-    // Passive slow cleaning for dirty rooms — 0.8%/game-sec so rooms eventually recover without a housekeeper
-    for (let f = 1; f < state.hotel.length; f++) {
-        for (let r = 0; r < GRID_ROWS; r++) {
-            for (let c = 0; c < GRID_COLS; c++) {
-                const cell = state.hotel[f][r][c];
-                if (cell.type === 'guest' && cell.status === 'dirty') {
-                    cell.cleanliness = Math.min(100, cell.cleanliness + 1.5 * state.gameSpeed);
-                    if (cell.cleanliness >= 100) {
-                        cell.cleanliness = 100;
-                        cell.status = 'ready';
-                        showToast('Room Aired Out', `Suite on Floor ${f} slowly recovered — hire a housekeeper to speed this up.`, 'info');
-                    }
                 }
             }
         }
@@ -109,26 +78,17 @@ function simulationStep() {
         }
     }
 
-    // Update financial statement balances
-    const netFlow = totalRent - totalWages;
+    // Ledger: rent estimate only — staff use one-time hire fees (no /sec payroll)
+    const netFlow = totalRent;
     const lRent = document.getElementById('ledger-rent');
-    if (lRent) lRent.innerText = `~+$${Math.round(totalRent)}/sec`;
+    if (lRent) lRent.innerText = `~+$${totalRent.toFixed(2)}/sec`;
     const lWages = document.getElementById('ledger-wages');
-    if (lWages) lWages.innerText = `-$${totalWages}/sec`;
+    if (lWages) lWages.innerText = '— (hire fee only)';
 
     const netEl = document.getElementById('ledger-net');
     if (netEl) {
-        netEl.innerText = `${netFlow >= 0 ? '+' : ''}$${Math.round(netFlow)}/sec`;
+        netEl.innerText = `${netFlow >= 0 ? '+' : ''}$${netFlow.toFixed(2)}/sec`;
         netEl.className = netFlow >= 0 ? 'text-emerald-400' : 'text-rose-400';
-    }
-
-    // Low-cash warning — alert player before they can't cover wages
-    if (totalWages > 0 && state.cash < totalWages * 10) {
-        if (!simulationStep._warnedAt || (Date.now() - simulationStep._warnedAt) > 20000) {
-            simulationStep._warnedAt = Date.now();
-            const burnSecs = Math.max(0, Math.round(state.cash / totalWages));
-            showToast('⚠️ Low Cash!', `Only ~${burnSecs}s of wages left — staff will leave if you run out.`, 'warning');
-        }
     }
 
     updateUI();
@@ -180,6 +140,26 @@ function updateUI() {
     const stGuests = document.getElementById('stat-guests');
     if (stGuests) stGuests.innerText = `${cap.occupied} / ${cap.built}`;
 
+    const stFun = document.getElementById('stat-fun');
+    if (stFun && state.fun) {
+        const rush = state.fun.rushHourTicks > 0 ? ` · rush ${state.fun.rushHourTicks}s` : '';
+        stFun.innerHTML = `<span class="text-amber-200">${state.fun.checkouts}</span> stays · <span class="text-amber-100/90">$${state.fun.tipsTotal}</span> tips<span class="text-rose-300">${rush}</span>`;
+    }
+
+    const stOwner = document.getElementById('stat-owner');
+    if (stOwner && state.hotelOwner) {
+        stOwner.textContent = state.hotelOwner.name || 'Owner';
+        stOwner.title = state.hotelOwner.title || 'Proprietor';
+    }
+    const ownerNameIn = document.getElementById('owner-name-input');
+    const ownerTitleIn = document.getElementById('owner-title-input');
+    if (ownerNameIn && state.hotelOwner && document.activeElement !== ownerNameIn) {
+        ownerNameIn.value = state.hotelOwner.name || '';
+    }
+    if (ownerTitleIn && state.hotelOwner && document.activeElement !== ownerTitleIn) {
+        ownerTitleIn.value = state.hotelOwner.title || '';
+    }
+
     const uiTotalRooms = document.getElementById('ui-total-rooms');
     if (uiTotalRooms) uiTotalRooms.innerText = `${cap.built} / ${state.maxRooms}`;
     const uiMaxFloors = document.getElementById('ui-max-floors');
@@ -221,6 +201,27 @@ function updateUI() {
     if (stBld) stBld.innerText = state.staff.builder;
     const stRec = document.getElementById('staff-receptionist-count');
     if (stRec) stRec.innerText = state.staff.receptionist;
+
+    const stMax = CONSTANTS.staffTraining.maxLevel;
+    const bindTraining = (job, labelId, costId, btnId) => {
+        const lv = getStaffTrainingLevel(job);
+        const lab = document.getElementById(labelId);
+        if (lab) lab.textContent = `Lv ${lv} / ${stMax}`;
+        const costEl = document.getElementById(costId);
+        const btn = document.getElementById(btnId);
+        if (!btn || !costEl) return;
+        if (lv >= stMax) {
+            costEl.textContent = 'MAX';
+            btn.disabled = true;
+        } else {
+            const c = CONSTANTS.staffTraining.jobs[job].upgradeCosts[lv];
+            costEl.textContent = `$${c}`;
+            btn.disabled = state.cash < c;
+        }
+    };
+    bindTraining('housekeeper', 'hk-training-label', 'hk-upgrade-cost', 'btn-upgrade-hk');
+    bindTraining('builder', 'bld-training-label', 'bld-upgrade-cost', 'btn-upgrade-bld');
+    bindTraining('receptionist', 'rec-training-label', 'rec-upgrade-cost', 'btn-upgrade-rec');
 
     const canBuild = state.cash >= CONSTANTS.buildRoomCost.cash &&
                      state.materials.concrete >= CONSTANTS.buildRoomCost.concrete &&
@@ -301,8 +302,7 @@ window.fireStaff = function(staffType) {
     // Remove one walker of this type
     const idx = state.walkers.findIndex(w => w.type === staffType);
     if (idx !== -1) state.walkers.splice(idx, 1);
-    const wage = CONSTANTS.staff[staffType].wage;
-    showToast("Staff Dismissed", `${staffType} let go — saving $${wage}/sec in wages.`, "warning");
+    showToast('Staff dismissed', `${staffType} has left — you can recruit again from Management when needed.`, 'warning');
     updateUI();
 };
 
@@ -322,6 +322,49 @@ window.hireStaff = function(staffType) {
     AudioEngine.playCash();
     showToast("Workforce Expanded", `Successfully contracted a new ${staffType}.`, "success");
     updateUI();
+};
+
+window.upgradeStaffTraining = function (job) {
+    const jobs = CONSTANTS.staffTraining.jobs;
+    if (!jobs[job]) {
+        showToast('Invalid upgrade', 'Unknown staff department.', 'error');
+        return;
+    }
+    const max = CONSTANTS.staffTraining.maxLevel;
+    const lv = getStaffTrainingLevel(job);
+    const deptName = { housekeeper: 'Housekeeping', builder: 'Construction crew', receptionist: 'Reception' }[job] || job;
+    if (lv >= max) {
+        showToast('Training maxed', `${deptName} is already at level ${max}.`, 'warning');
+        return;
+    }
+    const cost = jobs[job].upgradeCosts[lv];
+    if (state.cash < cost) {
+        showToast('Insufficient funds', `Need $${cost} for the next ${deptName.toLowerCase()} training level.`, 'error');
+        return;
+    }
+    state.cash -= cost;
+    state.staffTrainingLevels[job] = lv + 1;
+    const nl = state.staffTrainingLevels[job];
+    const e = jobs[job].effectPerLevel;
+    const pct = Math.round(100 * e * nl);
+    const titles = {
+        housekeeper: 'Housekeeping school',
+        builder: 'Site supervisor program',
+        receptionist: 'Front-desk excellence'
+    };
+    const bodies = {
+        housekeeper: `All housekeepers clean ~${pct}% faster vs untrained (level ${nl}).`,
+        builder: `Automated crew hammers ~${pct}% faster vs untrained (level ${nl}).`,
+        receptionist: `Each receptionist pulls ~${pct}% more booking weight vs untrained (level ${nl}).`
+    };
+    showToast(titles[job] || 'Training upgraded', bodies[job] || `Level ${nl}.`, 'success');
+    AudioEngine.playUpgrade();
+    updateUI();
+};
+
+/** @deprecated Use upgradeStaffTraining('housekeeper') — kept for older onclick references. */
+window.upgradeHousekeepingTraining = function () {
+    window.upgradeStaffTraining('housekeeper');
 };
 
 function setupTabs() {
@@ -521,10 +564,18 @@ if (btnAiMarketing) {
 }
 
 // Panning and Camera view controls
-document.getElementById('btn-zoom-in').addEventListener('click', () => { state.zoom = Math.min(1.8, state.zoom + 0.1); });
-document.getElementById('btn-zoom-out').addEventListener('click', () => { state.zoom = Math.max(0.5, state.zoom - 0.1); });
+const _vz = () => CONSTANTS.viewZoom;
+document.getElementById('btn-zoom-in').addEventListener('click', () => {
+    const vz = _vz();
+    state.zoom = Math.min(vz.max, state.zoom + vz.stepButton);
+});
+document.getElementById('btn-zoom-out').addEventListener('click', () => {
+    const vz = _vz();
+    state.zoom = Math.max(vz.min, state.zoom - vz.stepButton);
+});
 document.getElementById('btn-reset-view').addEventListener('click', () => {
-    state.zoom = 1.1;
+    const vz = _vz();
+    state.zoom = vz.reset;
     state.panX = 0;
     state.panY = 0;
     state.isoYaw = 0;
@@ -538,19 +589,29 @@ document.getElementById('btn-rotate-right')?.addEventListener('click', () => {
 });
 
 document.getElementById('btn-toggle-view').addEventListener('click', () => {
-    const modes   = ['inside', 'exterior', 'firstperson'];
-    const labels  = ['Inside View', 'Exterior View', '1st Person'];
-    const icons   = ['fa-eye', 'fa-building', 'fa-person-walking'];
+    const modes = ['inside', 'exterior', 'firstperson', 'manager'];
+    const labels = ['Inside View', 'Exterior View', '1st Person', 'Manager walk'];
+    const icons = ['fa-eye', 'fa-building', 'fa-person-walking', 'fa-user-tie'];
     const classes = [
         'px-3 h-10 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-lg',
-        'px-3 h-10 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-600',
-        'px-3 h-10 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-lg'
+        'px-3 h-10 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all border border-slate-600',
+        'px-3 h-10 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg',
+        'px-3 h-10 rounded-lg bg-violet-800 hover:bg-violet-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg border border-violet-600'
     ];
     const idx = modes.indexOf(state.viewMode);
-    const next = (idx + 1) % 3;
+    const next = (idx + 1) % modes.length;
     state.viewMode = modes[next];
-    if (state.viewMode === 'firstperson') state.fpFloor = Math.max(1, Math.min(state.fpFloor, state.hotel.length - 1));
-    else { state.fpRoom = null; Room3DRenderer.hide(); }
+    if (state.viewMode === 'firstperson') {
+        state.fpFloor = Math.max(1, Math.min(state.fpFloor, state.hotel.length - 1));
+    } else if (state.viewMode === 'manager') {
+        resetManagerWalkSpawn();
+        state.fpRoom = null;
+        Room3DRenderer.hide();
+        document.getElementById('game-canvas')?.focus?.();
+    } else {
+        state.fpRoom = null;
+        Room3DRenderer.hide();
+    }
     const btn = document.getElementById('btn-toggle-view');
     btn.className = classes[next];
     document.getElementById('txt-view-mode').innerText = labels[next];
@@ -558,22 +619,62 @@ document.getElementById('btn-toggle-view').addEventListener('click', () => {
     if (ic) ic.className = `fa-solid ${icons[next]}`;
 });
 
-// Drag Panning Interaction
+// Drag pan + orbit (full 360° on isoYaw)
 let isDragging = false;
+let isOrbitDragging = false;
 let startX, startY;
+let orbitLastX = 0;
+/** Radians of yaw per horizontal pixel while orbit-dragging (≈0.52°/px). */
+const ISO_ORBIT_SENS = 0.009;
+
 const canvasEl = document.getElementById('game-canvas');
+canvasEl.addEventListener('contextmenu', (e) => {
+    if (state.viewMode === 'inside' || state.viewMode === 'exterior') e.preventDefault();
+});
+canvasEl.addEventListener('wheel', (e) => {
+    if (state.viewMode === 'firstperson' || state.viewMode === 'manager') return;
+    if (e.shiftKey) {
+        e.preventDefault();
+        state.isoYaw = (state.isoYaw || 0) + (e.deltaY > 0 ? -0.08 : 0.08);
+        return;
+    }
+    e.preventDefault();
+    const vz = CONSTANTS.viewZoom;
+    const dir = e.deltaY > 0 ? -1 : 1;
+    state.zoom = Math.min(vz.max, Math.max(vz.min, state.zoom + dir * vz.stepWheel));
+}, { passive: false });
 canvasEl.addEventListener('mousedown', (e) => {
+    if (state.viewMode === 'firstperson' || state.viewMode === 'manager') return;
+    const wantOrbit = e.button === 2 || (e.button === 0 && e.altKey);
+    if (wantOrbit) {
+        isOrbitDragging = true;
+        orbitLastX = e.clientX;
+        isDragging = false;
+        e.preventDefault();
+        return;
+    }
+    if (e.button !== 0) return;
     isDragging = true;
+    isOrbitDragging = false;
     startX = e.clientX - state.panX;
     startY = e.clientY - state.panY;
 });
 window.addEventListener('mousemove', (e) => {
-    if (isDragging && state.viewMode !== 'firstperson') {
+    if (isOrbitDragging && (state.viewMode === 'inside' || state.viewMode === 'exterior')) {
+        const dx = e.clientX - orbitLastX;
+        orbitLastX = e.clientX;
+        state.isoYaw = (state.isoYaw || 0) + dx * ISO_ORBIT_SENS;
+        return;
+    }
+    if (isDragging && state.viewMode !== 'firstperson' && state.viewMode !== 'manager') {
         state.panX = e.clientX - startX;
         state.panY = e.clientY - startY;
     }
 });
-window.addEventListener('mouseup', () => { isDragging = false; });
+window.addEventListener('mouseup', () => {
+    isDragging = false;
+    isOrbitDragging = false;
+});
 
 // Time scale speed toggle event listeners
 document.getElementById('speed-1x').addEventListener('click', () => setGameSpeed(1));
@@ -606,15 +707,34 @@ window.startNewGame = function (silent = false) {
     state.campaignTimer = 0;
     state.fpFloor = 1;
     state.fpRoom = null;
+    state.viewMode = 'inside';
+    state.managerWalk = { f: 1, x: 0.55, z: 0.45, yaw: 0 };
     state.isoYaw = 0;
-    state.zoom = 1.1;
+    state.zoom = CONSTANTS.viewZoom.reset;
     state.panX = 0;
     state.panY = 0;
+    state.fun = { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0 };
+    state.staffTrainingLevels = { housekeeper: 0, builder: 0, receptionist: 0 };
+    state.hotelOwner = { name: 'Jordan Blake', title: 'Proprietor', animFrame: 0 };
     initHotel();
     populateUpgradeSelect();
     updateUI();
     if (!silent) showToast('New Game', 'Your hotel has been reset. Good luck!', 'success');
 };
+
+window.saveHotelOwnerProfile = function () {
+    const n = document.getElementById('owner-name-input');
+    const t = document.getElementById('owner-title-input');
+    if (!state.hotelOwner) state.hotelOwner = { name: 'Jordan Blake', title: 'Proprietor', animFrame: 0 };
+    const name = (n && n.value.trim()) || 'Jordan Blake';
+    const title = (t && t.value.trim()) || 'Proprietor';
+    state.hotelOwner.name = name.slice(0, 32);
+    state.hotelOwner.title = title.slice(0, 32);
+    updateUI();
+    showToast('Proprietor updated', `${state.hotelOwner.name} — ${state.hotelOwner.title}`, 'success');
+};
+
+document.getElementById('btn-owner-save')?.addEventListener('click', () => window.saveHotelOwnerProfile());
 
 // Save / Load / New Game button handlers
 document.getElementById('btn-save')?.addEventListener('click', () => saveGame());
@@ -660,6 +780,10 @@ window.onload = function () {
         const cappedDt = Math.min(dt, 0.1);
         
         updateWalkers(cappedDt);
+        updateManagerWalk(cappedDt);
+        if (state.hotelOwner) {
+            state.hotelOwner.animFrame = (state.hotelOwner.animFrame || 0) + cappedDt * 2.2;
+        }
         updateParticles();
         Room3DRenderer.renderFrame();
         CanvasRenderer.draw();
@@ -672,3 +796,26 @@ window.onload = function () {
 // Expose for AI agent
 window.setGameSpeed = setGameSpeed;
 window.initHotel    = initHotel;
+
+// Manager walk — keyboard (game-canvas should be focusable: tabindex="0")
+window.addEventListener('keydown', (e) => {
+    if (state.viewMode !== 'manager') return;
+    if (e.code === 'Escape' && state.fpRoom) {
+        state.fpRoom = null;
+        Room3DRenderer.hide();
+        e.preventDefault();
+        return;
+    }
+    if (state.fpRoom) return;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD'].includes(e.code)) {
+        e.preventDefault();
+    }
+    window._mgrKeys[e.code] = true;
+    if (e.code === 'KeyE' && !e.repeat) tryManagerEnterSuite();
+    if (e.code === 'BracketLeft' && !e.repeat) tryManagerElevatorFloor(-1);
+    if (e.code === 'BracketRight' && !e.repeat) tryManagerElevatorFloor(1);
+});
+window.addEventListener('keyup', (e) => {
+    if (state.viewMode !== 'manager') return;
+    window._mgrKeys[e.code] = false;
+});
