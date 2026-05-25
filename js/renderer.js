@@ -137,6 +137,7 @@ const CanvasRenderer = {
             this.drawParticles();
             return;
         }
+        Room3DRenderer.hide(); // not in firstperson — ensure overlay is hidden
         this.drawGround();
 
         // 1. Draw Glass Elevator Column Track (Behind the rooms)
@@ -845,13 +846,14 @@ const CanvasRenderer = {
     },
 
     drawFirstPersonView() {
-        // If a room is selected, show its interior instead
+        // If a room is selected, delegate to Three.js renderer
         if (state.fpRoom) {
             const { f, r, c } = state.fpRoom;
-            const cell = state.hotel[f] && state.hotel[f][r] && state.hotel[f][r][c];
-            if (cell) { this.drawFPRoomInterior(cell, f, r, c); return; }
+            const cell = state.hotel[f]?.[r]?.[c];
+            if (cell) { Room3DRenderer.ensureShowing(cell, f, r, c); return; }
             state.fpRoom = null;  // stale reference — fall through to corridor
         }
+        Room3DRenderer.hide(); // corridor view — hide 3D overlay
 
         this.fpDoorHitAreas = [];  // reset hit areas for this frame
 

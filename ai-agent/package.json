@@ -1,0 +1,14 @@
+{
+  "name": "grand-hotel-ai-agent",
+  "version": "1.0.0",
+  "description": "Claude-powered agent that plays Grand Hotel Blueprint",
+  "type": "module",
+  "scripts": {
+    "start": "node agent.js",
+    "install-browsers": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "playwright": "^1.49.0"
+  }
+}

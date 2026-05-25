@@ -482,6 +482,7 @@ document.getElementById('btn-toggle-view').addEventListener('click', () => {
     const next = (idx + 1) % 3;
     state.viewMode = modes[next];
     if (state.viewMode === 'firstperson') state.fpFloor = Math.max(1, Math.min(state.fpFloor, state.hotel.length - 1));
+    else { state.fpRoom = null; Room3DRenderer.hide(); }
     const btn = document.getElementById('btn-toggle-view');
     btn.className = classes[next];
     document.getElementById('txt-view-mode').innerText = labels[next];
@@ -548,6 +549,7 @@ window.onload = function () {
         initHotel();
         spawnDefaultReceptionist();
     }
+    Room3DRenderer.init();
     CanvasRenderer.init('game-canvas');
     setupTabs();
     populateUpgradeSelect();
@@ -570,6 +572,7 @@ window.onload = function () {
         
         updateWalkers(cappedDt);
         updateParticles();
+        Room3DRenderer.renderFrame();
         CanvasRenderer.draw();
 
         requestAnimationFrame(drawLoop);
