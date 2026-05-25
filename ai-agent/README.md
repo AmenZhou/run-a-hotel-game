@@ -11,6 +11,19 @@ loop every 4 seconds:
   3. page.evaluate()     → execute the action in the live game
 ```
 
+## Browser bridge: how data gets in and out
+
+Playwright runs the game in real Chromium. **`page.evaluate(fn)`** is the RPC boundary:
+
+1. **Node → browser** — Playwright sends your function into the **page’s JavaScript world** (same realm as the game). There it can read **`window.state`**, **`window.CONSTANTS`**, **`document.getElementById(...)`**, etc.
+2. **Browser → Node** — Whatever you **`return`** from that function must be **JSON-serializable** (plain objects, arrays, numbers, strings, booleans, `null`). Playwright copies that value back to Node. Do not return DOM nodes, functions, or circular structures.
+
+**Reading state** — `readState()` in `agent.js` runs one big `page.evaluate(() => { ... })` that walks `state.hotel`, aggregates room/staff/financial summaries, and checks the Build button’s `disabled` flag so `affordability` matches the UI.
+
+**Acting on the game** — `execute()` uses the same mechanism: e.g. `page.evaluate(() => document.getElementById('btn-build-room').click())` or `page.evaluate(({ material, amount }) => window.buyMaterial(material, amount), params)` so mutations happen in the **live** game, not a stub.
+
+**Not used for core state** — The agent does not scrape the canvas or OCR; it reads the same in-memory model the UI uses. (You *could* add screenshots later for a vision-based agent.)
+
 ## Setup
 
 ```bash

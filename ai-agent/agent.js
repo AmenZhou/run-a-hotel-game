@@ -151,6 +151,11 @@ Notes:
 - set_speed 4: do this on turn 1 or as soon as the hotel is stable — idle time is wasted money.`;
 
 // ─── Read game state from the live page ──────────────────────────────────────
+/**
+ * Pull a JSON snapshot from the browser via Playwright's page.evaluate().
+ * The callback runs in the page (access to window.state, DOM, etc.); the
+ * returned object is serialized and deserialized in Node — must be plain data.
+ */
 async function readState(page) {
     return page.evaluate(() => {
         const s = window.state;
