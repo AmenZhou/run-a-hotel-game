@@ -206,6 +206,18 @@ async function readState(page) {
         const materials = s.materials;
         const costs = { buildRoom: C.buildRoomCost, upgradeRoom: C.upgradeRoomCost };
 
+        let builtCount = 0;
+        let emptySlots = 0;
+        for (const rm of rooms) {
+            if (rm.status === 'empty') emptySlots++;
+            else if (rm.status !== 'empty') builtCount++;
+        }
+        const guestFloors = s.hotel.length - 1;
+        const canAddFloor = guestFloors < s.maxFloors;
+        const canPlaceRoom = emptySlots > 0 || canAddFloor;
+        const btnBuild = document.getElementById('btn-build-room');
+        const buildButtonEnabled = !!(btnBuild && !btnBuild.disabled);
+
         return {
             cash: gs_cash,
             materials,
@@ -213,8 +225,10 @@ async function readState(page) {
             marketTrends: s.marketTrends,
             staff: s.staff,
             gameSpeed: s.gameSpeed,
-            guestFloors: s.hotel.length - 1,
+            guestFloors,
             maxRooms: s.maxRooms,
+            builtCount,
+            emptySlots,
             rooms,
             roomSummary: {
                 total: rooms.filter(r => r.status !== 'empty').length,
@@ -233,10 +247,17 @@ async function readState(page) {
                 netPerSec: Math.round((estRentPerSec - totalWages) * 10) / 10,
             },
             costs,
+            buildButtonEnabled,
             affordability: {
-                canBuildRoom: gs_cash >= costs.buildRoom.cash && materials.concrete >= costs.buildRoom.concrete && materials.wood >= costs.buildRoom.wood,
+                canBuildRoom: buildButtonEnabled &&
+                    builtCount < s.maxRooms &&
+                    canPlaceRoom &&
+                    gs_cash >= costs.buildRoom.cash &&
+                    materials.concrete >= costs.buildRoom.concrete &&
+                    materials.wood >= costs.buildRoom.wood,
                 canUpgradeRoom: upgradeTargets.length > 0 && gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
-                canHireHousekeeper: gs_cash >= C.staff.housekeeper.cost,
+                canHireHousekeeper: gs_cash >= C.staff.housekeeper.cost &&
+                    s.staff.housekeeper < Math.max(1, Math.ceil(rooms.filter(r => r.status === 'dirty').length / 3)),
                 canHireBuilder: gs_cash >= C.staff.builder.cost,
                 canHireReceptionist: gs_cash >= C.staff.receptionist.cost,
                 canFireHousekeeper: s.staff.housekeeper > 0,
@@ -334,6 +355,16 @@ async function tick(page, turn, logger, session) {
     // ── Pre-LLM override: fire staff if cash runway < 20s ──
     const wages = gs.financials.wagesPerSec;
     const runway = wages > 0 ? gs.cash / wages : Infinity;
+    const hkCap = Math.max(1, Math.ceil(rs.dirty / 3));
+    if (gs.staff.housekeeper > hkCap) {
+        const override = { action: 'fire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${gs.staff.housekeeper} housekeepers > cap ${hkCap} for ${rs.dirty} dirty room(s)` };
+        console.log(`         ⚡ override → fire_staff {housekeeper} (over cap)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['fire_staff'] = (session.actionCounts['fire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
     if (runway < 20 && wages > 0) {
         // Fire the most expensive dispensable staff type
         const fireOrder = ['builder', 'housekeeper', 'receptionist'];
@@ -402,18 +433,30 @@ async function tick(page, turn, logger, session) {
     session.actionCounts[action.action] = (session.actionCounts[action.action] || 0) + 1;
 
     const roomsTotalBefore = gs.roomSummary.total;
+    const buildingBefore = gs.roomSummary.building;
     await execute(page, action);
 
-    // Verify build/upgrade actually changed state (avoids overcounting silent no-ops)
+    // Verify build/upgrade actually changed state (log silent no-ops)
     if (action.action === 'build_room' || action.action === 'upgrade_room') {
         const gsAfter = await readState(page);
         if (gsAfter) {
-            if (action.action === 'build_room' && gsAfter.roomSummary.total > roomsTotalBefore)
-                session.roomsBuilt++;
+            if (action.action === 'build_room') {
+                const progressed = gsAfter.roomSummary.total > roomsTotalBefore ||
+                    gsAfter.roomSummary.building > buildingBefore;
+                if (progressed) session.roomsBuilt++;
+                else {
+                    console.log(`         ⛔ build_room had no effect (button disabled or grid full)`);
+                    logger.write({ type: 'blocked_action', turn, attempted: 'build_room', params: action.params || {}, reason: 'no_effect' });
+                }
+            }
             if (action.action === 'upgrade_room') {
                 const levelBefore = JSON.stringify(gs.roomSummary.byLevel);
                 const levelAfter  = JSON.stringify(gsAfter.roomSummary.byLevel);
                 if (levelAfter !== levelBefore) session.roomsUpgraded++;
+                else {
+                    console.log(`         ⛔ upgrade_room had no effect`);
+                    logger.write({ type: 'blocked_action', turn, attempted: 'upgrade_room', params: action.params || {}, reason: 'no_effect' });
+                }
             }
         }
     }

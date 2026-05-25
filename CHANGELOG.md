@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1] - 2026-05-25
+### Fixed
+- **Agent build no-ops** — `canBuildRoom` now mirrors the UI build button (capacity, placement, materials); ineffective `build_room`/`upgrade_room` calls are logged as `blocked_action` with reason `no_effect`
+- **Agent housekeeper spam** — hard cap of 1 housekeeper per 3 dirty rooms in affordability + pre-LLM auto-fire when over cap
+- **Mass bankruptcy layoffs** — payroll shortfall dismisses one staff member per tick (highest wage first) instead of firing the entire workforce at once
+- **Slow recovery without staff** — passive dirty-room cleaning rate increased (1.5%/game-sec at 1× speed)
+
 ## [0.3.0] - 2026-05-25
 ### Added
 - **New Game button** — red 🔄 button in the top bar resets all state and starts fresh (with confirmation dialog)

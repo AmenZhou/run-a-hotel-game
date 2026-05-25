@@ -20,17 +20,21 @@ function simulationStep() {
     }
 
     if (totalWages > 0 && state.cash < totalWages) {
-        // Can't cover this period's wages — fire all staff
-        const hadStaff = Object.values(state.staff).some(v => v > 0);
-        state.staff.housekeeper = 0;
-        state.staff.builder = 0;
-        state.staff.receptionist = 0;
-        state.walkers = state.walkers.filter(w => w.type === 'guest' || w.type === 'vip');
-        if (hadStaff) {
-            showToast('💸 Out of Funds!', 'Cannot pay wages — all staff have left. Re-hire when you have enough cash.', 'error');
+        // Can't cover wages — dismiss one staff member (highest wage first) instead of mass layoff
+        const fireOrder = ['builder', 'receptionist', 'housekeeper'];
+        const target = fireOrder.find(t => state.staff[t] > 0);
+        if (target) {
+            state.staff[target]--;
+            const idx = state.walkers.findIndex(w => w.type === target);
+            if (idx !== -1) state.walkers.splice(idx, 1);
+            showToast('💸 Payroll Shortfall', `Could not pay wages — one ${target} has left.`, 'error');
         }
-        totalWages = 0; // no wages this tick — staff are gone
-    } else {
+        totalWages = 0;
+        for (const staffType in state.staff) {
+            totalWages += state.staff[staffType] * CONSTANTS.staff[staffType].wage;
+        }
+    }
+    if (totalWages > 0) {
         state.cash = Math.max(0, state.cash - totalWages);
     }
 
@@ -58,7 +62,7 @@ function simulationStep() {
             for (let c = 0; c < GRID_COLS; c++) {
                 const cell = state.hotel[f][r][c];
                 if (cell.type === 'guest' && cell.status === 'dirty') {
-                    cell.cleanliness = Math.min(100, cell.cleanliness + 0.8 * state.gameSpeed);
+                    cell.cleanliness = Math.min(100, cell.cleanliness + 1.5 * state.gameSpeed);
                     if (cell.cleanliness >= 100) {
                         cell.cleanliness = 100;
                         cell.status = 'ready';
