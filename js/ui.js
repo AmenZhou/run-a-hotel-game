@@ -643,6 +643,24 @@ if (btnUpgrade) {
     });
 }
 
+window.upgradeRoom = function(f, r, c) {
+    const cell = state.hotel[f] && state.hotel[f][r] && state.hotel[f][r][c];
+    if (!cell || cell.type !== 'guest' || cell.status !== 'ready' || cell.guestId) return false;
+    if (cell.level >= CONSTANTS.roomLevels.length) return false;
+    if (state.cash < CONSTANTS.upgradeRoomCost.cash ||
+        state.materials.wood < CONSTANTS.upgradeRoomCost.wood ||
+        state.materials.steel < CONSTANTS.upgradeRoomCost.steel) return false;
+    state.cash -= CONSTANTS.upgradeRoomCost.cash;
+    state.materials.wood -= CONSTANTS.upgradeRoomCost.wood;
+    state.materials.steel -= CONSTANTS.upgradeRoomCost.steel;
+    cell.level++;
+    AudioEngine.playUpgrade();
+    showToast("Renovation Finalized!", `Upgraded to a ${CONSTANTS.roomLevels[cell.level - 1].name}!`, "success");
+    populateUpgradeSelect();
+    updateUI();
+    return true;
+};
+
 // ✨ AI STRATEGIC CONSULTANT EVENT
 const btnAiConsult = document.getElementById('btn-ai-consult');
 if (btnAiConsult) {

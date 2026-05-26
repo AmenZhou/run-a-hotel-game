@@ -322,9 +322,9 @@ async function readState(page) {
                     materials.concrete >= costs.buildParking.concrete &&
                     materials.steel >= costs.buildParking.steel,
                 canUpgradeRoom: upgradeTargets.length > 0 && gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
-                canHireHousekeeper: dirtyCount > 0 &&
-                    gs_cash >= C.staff.housekeeper.cost &&
-                    s.staff.housekeeper < Math.min(3, dirtyCount),
+                canHireHousekeeper: gs_cash >= C.staff.housekeeper.cost &&
+                    (dirtyCount > 0 || builtCount > 0) &&
+                    s.staff.housekeeper < Math.max(builtCount > 0 ? 1 : 0, Math.min(3, dirtyCount)),
                 canHireBuilder: gs_cash >= C.staff.builder.cost &&
                     rooms.filter(r => r.status === 'building').length > 0 &&
                     s.staff.builder < Math.min(2, Math.max(1, rooms.filter(r => r.status === 'building').length)),
@@ -390,12 +390,7 @@ async function execute(page, action) {
             });
             break;
         case 'upgrade_room':
-            await page.evaluate(({ f, r, c }) => {
-                const sel = document.getElementById('select-upgrade-room');
-                if (sel) sel.value = `${f}-${r}-${c}`;
-                const btn = document.getElementById('btn-upgrade-room');
-                if (btn) { btn.disabled = false; btn.click(); }
-            }, params);
+            await page.evaluate(({ f, r, c }) => window.upgradeRoom(f, r, c), params);
             break;
         case 'set_speed':
             await page.evaluate(({ speed }) => window.setGameSpeed(speed), params);
@@ -601,7 +596,8 @@ async function tick(page, turn, logger, session) {
     // ── Pre-LLM override: fire staff if cash runway < 20s ──
     const wages = gs.financials.wagesPerSec;
     const runway = wages > 0 ? gs.cash / wages : Infinity;
-    const hkCap = Math.min(3, rs.dirty);
+    // Keep ≥1 housekeeper as long as hotel has rooms (rooms get dirty again quickly)
+    const hkCap = Math.max(gs.builtCount > 0 ? 1 : 0, Math.min(3, rs.dirty));
     if (gs.staff.housekeeper > hkCap) {
         const override = { action: 'fire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${gs.staff.housekeeper} housekeepers > cap ${hkCap} for ${rs.dirty} dirty room(s)` };
         console.log(`         ⚡ override → fire_staff {housekeeper} (over cap)`);
