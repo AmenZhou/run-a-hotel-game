@@ -120,7 +120,7 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 ## Money-maximization priorities
 
 1. **Materials first — buy before you build.** Check \`materialShortfall.forRoom\`; if wood or concrete is short, buy_material NOW regardless of price — do not wait for a deal.
-2. **Standing stockpile.** Always keep ≥ 20 wood and ≥ 30 concrete on hand. Buy to refill even at base price. Upgrades also need **steel** — buy ≥ 5 steel once you have 3+ ready rooms.
+2. **Standing stockpile.** Keep ≥ 20 wood, ≥ 30 concrete, ≥ 5 steel. Buy to refill. **Hard cap: never exceed 50 wood / 80 concrete / 20 steel — excess wastes cash that should go toward builds.** Never buy materials if it would leave cash < $800 (unless buying specifically to cover a materialShortfall).
 3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Never fire-then-rehire; only fire if dirty = 0 for 2+ consecutive turns. Cap: 1 per 2 dirty rooms.
 4. **Receptionist cap.** 1 per 2 ready rooms, max 3 total. Do not hire beyond this — extra receptionists waste cash.
 5. **Builder cap.** 1 per room currently building, max 2. Fire ALL builders the turn \`roomSummary.building = 0\`.
@@ -324,7 +324,7 @@ async function readState(page) {
                 canUpgradeRoom: upgradeTargets.length > 0 && gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
                 canHireHousekeeper: dirtyCount > 0 &&
                     gs_cash >= C.staff.housekeeper.cost &&
-                    s.staff.housekeeper < Math.max(1, Math.ceil(dirtyCount / 2)),
+                    s.staff.housekeeper < Math.min(3, dirtyCount),
                 canHireBuilder: gs_cash >= C.staff.builder.cost &&
                     rooms.filter(r => r.status === 'building').length > 0 &&
                     s.staff.builder < Math.min(2, Math.max(1, rooms.filter(r => r.status === 'building').length)),
@@ -453,6 +453,22 @@ function clampActionToAffordability(action, gs) {
 
     if (orig === 'buy_material' && (!action.params?.amount || action.params.amount <= 0)) {
         return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: amount ≤ 0]`.trim() }, clamped: true, from: orig };
+    }
+    if (orig === 'buy_material' && action.params?.amount > 0) {
+        const mat = action.params.material;
+        const price = (gs.marketPrices && gs.marketPrices[mat]) || (mat === 'steel' ? 60 : mat === 'wood' ? 12 : 20);
+        const cost = action.params.amount * price;
+        const mats = gs.materials || {};
+        const stockpileCap = { concrete: 80, wood: 50, steel: 20 };
+        const alreadyEnough = (mats[mat] || 0) >= stockpileCap[mat];
+        const shortfallForRoom = gs.materialShortfall?.forRoom?.[mat] > 0;
+        const cashAfterBuy = gs.cash - cost;
+        if (alreadyEnough) {
+            return { action: { action: 'wait', params: {}, reasoning: `[clamped: ${mat} at cap ${stockpileCap[mat]}]` }, clamped: true, from: orig };
+        }
+        if (!shortfallForRoom && cashAfterBuy < 800) {
+            return { action: { action: 'wait', params: {}, reasoning: `[clamped: buy would drop cash below $800 reserve]` }, clamped: true, from: orig };
+        }
     }
     if (orig === 'build_room' && !af.canBuildRoom) {
         return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot build]`.trim() }, clamped: true, from: orig };
@@ -585,7 +601,7 @@ async function tick(page, turn, logger, session) {
     // ── Pre-LLM override: fire staff if cash runway < 20s ──
     const wages = gs.financials.wagesPerSec;
     const runway = wages > 0 ? gs.cash / wages : Infinity;
-    const hkCap = Math.max(1, Math.ceil(rs.dirty / 2));
+    const hkCap = Math.min(3, rs.dirty);
     if (gs.staff.housekeeper > hkCap) {
         const override = { action: 'fire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${gs.staff.housekeeper} housekeepers > cap ${hkCap} for ${rs.dirty} dirty room(s)` };
         console.log(`         ⚡ override → fire_staff {housekeeper} (over cap)`);
