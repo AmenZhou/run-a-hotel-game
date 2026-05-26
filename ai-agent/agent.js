@@ -120,11 +120,11 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 ## Money-maximization priorities
 
 1. **Materials first — buy before you build.** Check \`materialShortfall.forRoom\`; if wood or concrete is short, buy_material NOW regardless of price — do not wait for a deal.
-2. **Standing stockpile.** Always keep ≥ 20 wood and ≥ 30 concrete on hand. Buy to refill even at base price.
-3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Never fire-then-rehire; only fire if dirty = 0 for 2+ consecutive turns. Cap: 1 per 3 dirty rooms.
+2. **Standing stockpile.** Always keep ≥ 20 wood and ≥ 30 concrete on hand. Buy to refill even at base price. Upgrades also need **steel** — buy ≥ 5 steel once you have 3+ ready rooms.
+3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Never fire-then-rehire; only fire if dirty = 0 for 2+ consecutive turns. Cap: 1 per 2 dirty rooms.
 4. **Receptionist cap.** 1 per 2 ready rooms, max 3 total. Do not hire beyond this — extra receptionists waste cash.
 5. **Builder cap.** 1 per room currently building, max 2. Fire ALL builders the turn \`roomSummary.building = 0\`.
-6. **Room upgrades after materials stocked.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 15 and concrete ≥ 25.
+6. **Room upgrades after materials stocked.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 15 and concrete ≥ 25 and steel ≥ 3.
 7. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
 8. **Set speed to 4×** on turn 1 — idle time is wasted money.
 9. **Build 1 restaurant after 3+ guest rooms.** $0.80/s passive income beats a Lvl-1 room. Hire 1 chef right after — unlocks full rate, pays back in ~3 min at 4× speed.
@@ -324,7 +324,7 @@ async function readState(page) {
                 canUpgradeRoom: upgradeTargets.length > 0 && gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
                 canHireHousekeeper: dirtyCount > 0 &&
                     gs_cash >= C.staff.housekeeper.cost &&
-                    s.staff.housekeeper < Math.max(1, Math.ceil(dirtyCount / 3)),
+                    s.staff.housekeeper < Math.max(1, Math.ceil(dirtyCount / 2)),
                 canHireBuilder: gs_cash >= C.staff.builder.cost &&
                     rooms.filter(r => r.status === 'building').length > 0 &&
                     s.staff.builder < Math.min(2, Math.max(1, rooms.filter(r => r.status === 'building').length)),
@@ -451,6 +451,9 @@ function clampActionToAffordability(action, gs) {
     const orig = action.action;
     const p = action.params || {};
 
+    if (orig === 'buy_material' && (!action.params?.amount || action.params.amount <= 0)) {
+        return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: amount ≤ 0]`.trim() }, clamped: true, from: orig };
+    }
     if (orig === 'build_room' && !af.canBuildRoom) {
         return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot build]`.trim() }, clamped: true, from: orig };
     }
@@ -538,10 +541,19 @@ async function tick(page, turn, logger, session) {
         upgrade_targets_count: gs.upgradeTargets.length,
     });
 
+    // ── Pre-LLM override: ensure speed 4 from turn 1 ──
+    if (gs.gameSpeed < 4) {
+        const override = { action: 'set_speed', params: { speed: 4 }, reasoning: '[auto] set 4× speed for max income' };
+        console.log(`         ⚡ override → set_speed {4} (was ${gs.gameSpeed}×)`);
+        logger.write({ type: 'override', turn, ...override });
+        await execute(page, override);
+        // Don't return — continue to LLM for the main action this turn
+    }
+
     // ── Pre-LLM override: fire staff if cash runway < 20s ──
     const wages = gs.financials.wagesPerSec;
     const runway = wages > 0 ? gs.cash / wages : Infinity;
-    const hkCap = Math.max(1, Math.ceil(rs.dirty / 3));
+    const hkCap = Math.max(1, Math.ceil(rs.dirty / 2));
     if (gs.staff.housekeeper > hkCap) {
         const override = { action: 'fire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${gs.staff.housekeeper} housekeepers > cap ${hkCap} for ${rs.dirty} dirty room(s)` };
         console.log(`         ⚡ override → fire_staff {housekeeper} (over cap)`);
