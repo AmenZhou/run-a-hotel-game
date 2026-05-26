@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.24] - 2026-05-26
+### Agent (`ai-agent/agent.js`)
+- **Strategy rewrite** — replaced 8 heuristic rules with tighter caps and materials-first logic:
+  - Rule 1–2: materials-first buying; standing stockpile ≥ 20 wood / ≥ 30 concrete regardless of price
+  - Rule 3: housekeeper discipline — never fire-then-rehire; only fire if dirty=0 for 2+ turns
+  - Rule 4: receptionist cap — 1 per 2 ready rooms, max 3
+  - Rule 5: builder cap — 1 per building room, max 2; fire ALL when building=0
+  - Rule 6: upgrades only after materials stocked (wood ≥ 15, concrete ≥ 25)
+- **`materialShortfall` in readState** — exposes exact wood/concrete/steel gaps for next room, restaurant, and parking builds so agent can directly buy what is missing
+- **Affordability guards tightened** — `canHireBuilder` blocked when no rooms are building or at cap (max 2); `canHireReceptionist` blocked at cap (1 per 2 ready rooms, max 3); `canFireBuilder` only offered when no building rooms; `canFireReceptionist` only offered when over cap
+- **`fire_staff (chef/valet)` in valid actions** — was missing from `validActionsThisTurn`; now included when canFireChef/canFireValet
+
 ## [0.3.23] - 2026-05-26
 ### Changed
 - **Restaurant income raised** — base $0.80/s (was $0.30/s); half-rate ($0.40/s) when no Chef is on staff, full rate requires ≥1 Chef; up to 3 Chefs add +25% each (max +75%).

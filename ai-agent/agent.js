@@ -119,14 +119,14 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 
 ## Money-maximization priorities
 
-1. **Dirty rooms are lost income.** Hire a housekeeper only when \`roomSummary.dirty > 0\` — never hire preemptively. Cap at 1 housekeeper per 3 dirty rooms.
-2. **Room upgrades are the best ROI.** Lvl 4 earns 12× more than Lvl 1. Upgrade every room as soon as you can afford it.
-3. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
-4. **Receptionist multiplies income.** Each one boosts check-in rate 20% — hire early.
-5. **Builder shortens dead time.** Rooms earn nothing while building — a builder pays back fast.
-6. **Buy materials when cheap.** Concrete/wood/steel below base price = buy in bulk.
-7. **Set speed to 4×** as soon as the hotel is stable — idle time is lost money.
-8. **Cash still matters for builds and materials.** Staff do not drain cash over time after hiring — only builds, upgrades, and material buys do.
+1. **Materials first — buy before you build.** Check \`materialShortfall.forRoom\`; if wood or concrete is short, buy_material NOW regardless of price — do not wait for a deal.
+2. **Standing stockpile.** Always keep ≥ 20 wood and ≥ 30 concrete on hand. Buy to refill even at base price.
+3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Never fire-then-rehire; only fire if dirty = 0 for 2+ consecutive turns. Cap: 1 per 3 dirty rooms.
+4. **Receptionist cap.** 1 per 2 ready rooms, max 3 total. Do not hire beyond this — extra receptionists waste cash.
+5. **Builder cap.** 1 per room currently building, max 2. Fire ALL builders the turn \`roomSummary.building = 0\`.
+6. **Room upgrades after materials stocked.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 15 and concrete ≥ 25.
+7. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
+8. **Set speed to 4×** on turn 1 — idle time is wasted money.
 9. **Build 1 restaurant after 3+ guest rooms.** $0.80/s passive income beats a Lvl-1 room. Hire 1 chef right after — unlocks full rate, pays back in ~3 min at 4× speed.
 10. **Build 1 parking lot after you have a restaurant.** $0.50/s stacks with restaurant income. Hire 1 valet immediately.
 11. **Stack up to 3 chefs / 3 valets** once you have the facilities — each pays back quickly.
@@ -325,15 +325,34 @@ async function readState(page) {
                 canHireHousekeeper: dirtyCount > 0 &&
                     gs_cash >= C.staff.housekeeper.cost &&
                     s.staff.housekeeper < Math.max(1, Math.ceil(dirtyCount / 3)),
-                canHireBuilder: gs_cash >= C.staff.builder.cost,
-                canHireReceptionist: gs_cash >= C.staff.receptionist.cost,
+                canHireBuilder: gs_cash >= C.staff.builder.cost &&
+                    rooms.filter(r => r.status === 'building').length > 0 &&
+                    s.staff.builder < Math.min(2, Math.max(1, rooms.filter(r => r.status === 'building').length)),
+                canHireReceptionist: gs_cash >= C.staff.receptionist.cost &&
+                    s.staff.receptionist < Math.min(3, Math.max(1, Math.floor(rooms.filter(r => r.status === 'ready').length / 2))),
                 canFireHousekeeper: s.staff.housekeeper > 0,
-                canFireBuilder: s.staff.builder > 0,
-                canFireReceptionist: s.staff.receptionist > 0,
+                canFireBuilder: s.staff.builder > 0 && rooms.filter(r => r.status === 'building').length === 0,
+                canFireReceptionist: s.staff.receptionist > 0 &&
+                    s.staff.receptionist > Math.min(3, Math.max(1, Math.floor(rooms.filter(r => r.status === 'ready').length / 2))),
                 canHireChef:  facilityCount.restaurant > 0 && gs_cash >= C.staff.chef.cost  && (s.staff.chef  || 0) < 3,
                 canHireValet: facilityCount.parking    > 0 && gs_cash >= C.staff.valet.cost && (s.staff.valet || 0) < 3,
                 canFireChef:  (s.staff.chef  || 0) > 0,
                 canFireValet: (s.staff.valet || 0) > 0,
+            },
+            materialShortfall: {
+                forRoom: {
+                    wood:     Math.max(0, costs.buildRoom.wood     - materials.wood),
+                    concrete: Math.max(0, costs.buildRoom.concrete - materials.concrete),
+                },
+                forRestaurant: {
+                    wood:     Math.max(0, (costs.buildRestaurant.wood     || 0) - materials.wood),
+                    concrete: Math.max(0, (costs.buildRestaurant.concrete || 0) - materials.concrete),
+                    steel:    Math.max(0, (costs.buildRestaurant.steel    || 0) - materials.steel),
+                },
+                forParking: {
+                    concrete: Math.max(0, (costs.buildParking.concrete || 0) - materials.concrete),
+                    steel:    Math.max(0, (costs.buildParking.steel    || 0) - materials.steel),
+                },
             }
         };
     });
@@ -403,6 +422,8 @@ function validActionsThisTurn(gs) {
     if (a.canFireHousekeeper) out.push('fire_staff (housekeeper)');
     if (a.canFireBuilder) out.push('fire_staff (builder)');
     if (a.canFireReceptionist) out.push('fire_staff (receptionist)');
+    if (a.canFireChef)  out.push('fire_staff (chef)');
+    if (a.canFireValet) out.push('fire_staff (valet)');
     return out;
 }
 
