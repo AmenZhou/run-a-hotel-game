@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.26] - 2026-05-26
+### Agent (`ai-agent/agent.js`)
+- **Housekeeper backlog override** — auto-hire fires whenever dirty ≥ 2 and under cap (was only when hk=0); prevents hotel jamming up with 5+ dirty rooms and no rebook
+### Game (`js/ui.js`)
+- **Owner WASD movement (inside view)** — WASD / arrow keys move the owner character one cell at a time in Inside view; `[`/`]` change floors; input ignores if a text field is focused
+
 ## [0.3.25] - 2026-05-26
 ### Balance
 - **Restaurant cost reduced** — $800 cash + 10 wood + 15 concrete + 4 steel (was $2200 + 22 wood + 30 concrete + 8 steel); now affordable immediately from starting cash

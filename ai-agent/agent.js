@@ -577,8 +577,16 @@ async function tick(page, turn, logger, session) {
     }
 
     // ── Pre-LLM override: hire housekeeper when dirty rooms are backlogged ──
-    if (rs.dirty > 0 && gs.staff.housekeeper === 0 && gs.cash >= gs.costs.buildRoom.cash / 50 && gs.affordability.canHireHousekeeper) {
-        const override = { action: 'hire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${rs.dirty} dirty room(s), no housekeeper — hiring one` };
+    if (gs.affordability.canHireHousekeeper && rs.dirty >= 2) {
+        const override = { action: 'hire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${rs.dirty} dirty room(s), hiring housekeeper (${gs.staff.housekeeper} → ${gs.staff.housekeeper + 1})` };
+        console.log(`         ⚡ override → hire_staff {housekeeper} (${rs.dirty} dirty, ${gs.staff.housekeeper} hk)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+    if (rs.dirty > 0 && gs.staff.housekeeper === 0 && gs.affordability.canHireHousekeeper) {
+        const override = { action: 'hire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${rs.dirty} dirty room(s), no housekeeper` };
         console.log(`         ⚡ override → hire_staff {housekeeper} (${rs.dirty} dirty, 0 hk)`);
         logger.write({ type: 'override', turn, ...override });
         session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;

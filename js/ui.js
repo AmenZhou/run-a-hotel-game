@@ -990,6 +990,36 @@ window.setGameSpeed = setGameSpeed;
 window.initHotel    = initHotel;
 
 // Manager walk — keyboard (game-canvas should be focusable: tabindex="0")
+// ── Owner WASD movement (inside view) ──────────────────────────────────────
+window.addEventListener('keydown', (e) => {
+    if (state.viewMode !== 'inside') return;
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    const dirKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD'];
+    const floorKeys = ['BracketLeft', 'BracketRight'];
+    if (!dirKeys.includes(e.code) && !floorKeys.includes(e.code)) return;
+    e.preventDefault();
+
+    const ownerW = state.walkers.find(w => w.id === 'owner');
+    if (!ownerW || typeof window.moveOwnerTo !== 'function') return;
+
+    const curFloor = ownerW.targetF !== undefined ? ownerW.targetF : ownerW.f;
+    const curX = ownerW.targetGridX !== undefined ? ownerW.targetGridX : (ownerW.c + ownerW.v);
+    const curY = ownerW.targetGridY !== undefined ? ownerW.targetGridY : (ownerW.r + ownerW.u);
+
+    if (e.code === 'BracketLeft'  && !e.repeat) { window.moveOwnerTo(Math.max(0, curFloor - 1), curX, curY); return; }
+    if (e.code === 'BracketRight' && !e.repeat) { window.moveOwnerTo(Math.min(state.hotel.length - 1, curFloor + 1), curX, curY); return; }
+
+    let dx = 0, dy = 0;
+    if (e.code === 'ArrowUp'    || e.code === 'KeyW') dy = -1;
+    if (e.code === 'ArrowDown'  || e.code === 'KeyS') dy = +1;
+    if (e.code === 'ArrowLeft'  || e.code === 'KeyA') dx = -1;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') dx = +1;
+
+    const newX = Math.max(0, Math.min(GRID_COLS - 0.5, curX + dx));
+    const newY = Math.max(0, Math.min(GRID_ROWS - 0.5, curY + dy));
+    window.moveOwnerTo(curFloor, newX, newY);
+});
+
 window.addEventListener('keydown', (e) => {
     if (state.viewMode !== 'manager') return;
     if (e.code === 'Escape' && state.fpRoom) {
