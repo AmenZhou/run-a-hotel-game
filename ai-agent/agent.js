@@ -120,11 +120,11 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 ## Money-maximization priorities
 
 1. **Build rooms, then upgrade them.** Build rooms to 4+ total, then upgrade the lowest-level ones — Level 4 earns 12× Level 1 rent. The system auto-upgrades when idle; focus LLM turns on building new rooms.
-2. **Buy materials ONLY when short AND cash floor is safe.** Only buy if \`materialShortfall.forRoom\` shows a gap AND your cash after the purchase will still be ≥ $1,500 (the room build cost). If buying would drop cash below $1,500, wait. Never buy to refill stockpile when you have enough for the next build. Never exceed 50 wood / 80 concrete / 20 steel.
-3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Cap: 1 per 3 dirty rooms. Do not hire a 2nd at dirty=2 — a single housekeeper handles the backlog within one cycle.
+2. **Buy materials ONLY when you have a real shortfall.** Only buy if \`materialShortfall.forRoom\` shows a gap, OR \`upgradeTargets.length > 0\` and steel < 6, AND your cash after the purchase will still be ≥ $1,500. Never buy to pre-stock: if all shortfalls are zero, output \`wait\`. Never exceed 50 wood / 80 concrete / 20 steel.
+3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Cap: 1 per 2 dirty rooms. Hire a 2nd at dirty=2 — dirty rooms lock out revenue until cleaned. Fire excess housekeepers when dirty=0.
 4. **Receptionist.** Hire 1 receptionist per 4 ready rooms (max 3 total). At $40 it earns back its cost within minutes via improved booking rates. The system auto-hires the first one; do not re-hire once dismissed.
 5. **Hire 1 builder when rooms are building.** Builder costs $75 and cuts construction time in half — pays back within 5 turns. Fire all builders the moment \`roomSummary.building = 0\`.
-6. **Room upgrades after materials stocked.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 15 and steel ≥ 6.
+6. **Room upgrades — steel is critical.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 12 and steel ≥ 6. Note: building restaurant+parking uses 10 steel total, leaving only 5 of the starting 15. Buy 1 steel immediately if upgradeTargets.length > 0 and steel < 6.
 7. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
 8. **Set speed to 4×** on turn 1 — idle time is wasted money.
 9. **Build 1 restaurant ASAP** — the moment you can afford it. Costs $800 cash + 10 wood + 15 concrete + 4 steel. $1.50/s passive income ($6/s at 4× speed) — better ROI than any room. Hire 1 chef right after. **Only build 1 restaurant total.**
@@ -459,9 +459,17 @@ function clampActionToAffordability(action, gs) {
         const stockpileCap = { concrete: 80, wood: 50, steel: 20 };
         const alreadyEnough = (mats[mat] || 0) >= stockpileCap[mat];
         const shortfallForRoom = gs.materialShortfall?.forRoom?.[mat] > 0;
+        const shortfallForUpgrade = gs.upgradeTargets?.length > 0 && mat === 'steel' && (mats.steel || 0) < (gs.costs?.upgradeRoom?.steel || 6);
+        const shortfallForFacility = (gs.materialShortfall?.forRestaurant?.[mat] > 0 && gs.facilityCount?.restaurant === 0) ||
+                                     (gs.materialShortfall?.forParking?.[mat]    > 0 && gs.facilityCount?.parking    === 0);
+        const hasAnyShortfall = shortfallForRoom || shortfallForUpgrade || shortfallForFacility;
         const cashAfterBuy = gs.cash - cost;
         if (alreadyEnough) {
             return { action: { action: 'wait', params: {}, reasoning: `[clamped: ${mat} at cap ${stockpileCap[mat]}]` }, clamped: true, from: orig };
+        }
+        // Block speculative buys when there is no actual shortfall
+        if (!hasAnyShortfall) {
+            return { action: { action: 'wait', params: {}, reasoning: `[clamped: no shortfall for ${mat} — buying would be speculative stockpile]` }, clamped: true, from: orig };
         }
         if (!shortfallForRoom && cashAfterBuy < 300) {
             return { action: { action: 'wait', params: {}, reasoning: `[clamped: buy would drop cash below $300 reserve]` }, clamped: true, from: orig };
@@ -581,10 +589,28 @@ async function tick(page, turn, logger, session) {
         return;
     }
 
+    // ── Pre-LLM override: proactively buy steel when upgrade targets exist but steel is short ──
+    // Starting steel (15) minus restaurant (4) + parking (6) = 5 — just 1 below the 6 needed.
+    // Without this, upgrades never happen because canUpgradeRoom stays false.
+    if (gs.upgradeTargets.length > 0 && gs.materials.steel < C.upgradeRoomCost.steel) {
+        const shortfall = C.upgradeRoomCost.steel - gs.materials.steel;
+        const steelPrice = (gs.marketPrices?.steel) || C.materials.steel.basePrice;
+        const cost = shortfall * steelPrice;
+        if (gs.cash - cost >= (gs.costs?.buildRoom?.cash || 1500)) {
+            const override = { action: 'buy_material', params: { material: 'steel', amount: shortfall }, reasoning: `[auto] Need ${shortfall} more steel for room upgrade (have ${gs.materials.steel}, need ${C.upgradeRoomCost.steel})` };
+            console.log(`         ⚡ override → buy_material {steel ×${shortfall}} for upgrade (steel ${gs.materials.steel} → ${C.upgradeRoomCost.steel})`);
+            logger.write({ type: 'override', turn, ...override });
+            session.actionCounts['buy_material'] = (session.actionCounts['buy_material'] || 0) + 1;
+            await execute(page, override);
+            return;
+        }
+    }
+
     // ── Pre-LLM override: auto-upgrade room ──
-    // Fires when: affordable AND idle (nothing building) AND enough rooms to spare one for upgrade
+    // Fires when: affordable AND a vacant clean guest room exists AND 4+ rooms built.
+    // Upgrade and construction can proceed simultaneously — removed the rs.building===0 gate.
     // With 4+ rooms, upgrading is better ROI than adding another level-1 room (lvl4 = 12× rent)
-    const upgradeReady = gs.affordability.canUpgradeRoom && gs.upgradeTargets.length > 0 && rs.building === 0;
+    const upgradeReady = gs.affordability.canUpgradeRoom && gs.upgradeTargets.length > 0;
     const upgradeCondition = upgradeReady && (gs.builtCount >= 4 || !gs.affordability.canBuildRoom && gs.builtCount >= 3);
     if (upgradeCondition) {
         const t = gs.upgradeTargets[0];
@@ -597,10 +623,10 @@ async function tick(page, turn, logger, session) {
         return;
     }
 
-    // ── Pre-LLM override: hire housekeeper when dirty rooms backlog ≥ 3 ──
-    // Threshold is 3 (not 2) to avoid hire→fire oscillation: with 1 HK present,
-    // 2 dirty rooms clears in one clean cycle, so hiring a 2nd only to fire it next tick wastes $30.
-    if (gs.affordability.canHireHousekeeper && rs.dirty >= 3) {
+    // ── Pre-LLM override: hire housekeeper when dirty rooms backlog ≥ 2 ──
+    // Threshold 2 (down from 3): with many rooms at 4× speed, dirty rooms accumulate fast.
+    // A 2nd HK at dirty=2 costs $30 but prevents the backlog reaching 4 within 2-3 ticks.
+    if (gs.affordability.canHireHousekeeper && rs.dirty >= 2) {
         const override = { action: 'hire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${rs.dirty} dirty room(s), hiring housekeeper (${gs.staff.housekeeper} → ${gs.staff.housekeeper + 1})` };
         console.log(`         ⚡ override → hire_staff {housekeeper} (${rs.dirty} dirty, ${gs.staff.housekeeper} hk)`);
         logger.write({ type: 'override', turn, ...override });

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.35] - 2026-05-26
+### Fixed
+- **Upgrades never fired — steel shortfall** (`ai-agent/agent.js`) — restaurant+parking builds consume 10 of the 15 starting steel units, leaving 5; upgrade requires 6; a new pre-LLM override now proactively buys the shortfall when `upgradeTargets.length > 0 && steel < 6`; across 40 turns zero upgrades were applied despite 6+ level-1 rooms and $88k cash
+- **Upgrade override gated on `building === 0`** (`ai-agent/agent.js`) — removing this unnecessary condition lets upgrades happen in parallel with ongoing construction; a free clean room can be upgraded without waiting for all builds to finish
+- **Housekeeper backlog hit 4** (`ai-agent/agent.js`) — dirty-room threshold for hiring a 2nd housekeeper lowered from `dirty ≥ 3` to `dirty ≥ 2`; at 4× speed rooms accumulate dirt faster than 1 HK can clear them
+- **Speculative buy_material buys** (`ai-agent/agent.js`) — `clampActionToAffordability` now blocks `buy_material` when there is no real shortfall (`shortfallForRoom`, `shortfallForUpgrade`, and `shortfallForFacility` all zero); agent was spending 35% of LLM turns pre-stocking concrete/wood with zero shortfall
+
 ## [0.3.34] - 2026-05-26
 ### Fixed
 - **Animation freeze on guest checkout** (`js/simulation-walkers.js`) — `surgeMultiplier` and `tip` were declared with `let` inside `if (room) {…}` block but referenced outside it for mood text (`🤩 Peak stay!`, `😊 Loved it!`); threw `ReferenceError: surgeMultiplier is not defined` on every checkout with 2+ rooms, killing the `requestAnimationFrame` loop; fix: hoist both declarations to the `if (w.stayTime <= 0)` scope
