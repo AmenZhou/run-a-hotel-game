@@ -183,6 +183,8 @@ function triggerGuestBooking() {
         finalChance *= 1.6;
     }
 
+    finalChance = Math.min(0.95, finalChance);
+
     const roll = Math.random();
     console.log(`[booking] Vacant: ${vacant.id} | chance=${finalChance.toFixed(2)} roll=${roll.toFixed(2)} → ${roll < finalChance ? 'BOOKED' : 'no show'}`);
     if (roll < finalChance) {

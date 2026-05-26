@@ -42,14 +42,14 @@ function simulationStep() {
         }
     }
 
-    // Passive construction progress (3%/sec base; builders also contribute via walker AI)
+    // Passive construction progress (0.5%/sec base — builder walker does the heavy lifting)
     for (let f = 1; f < state.hotel.length; f++) {
         for (let r = 0; r < GRID_ROWS; r++) {
             for (let c = 0; c < GRID_COLS; c++) {
                 const cell = state.hotel[f][r][c];
                 const passiveBuildTypes = ['guest', 'restaurant', 'parking'];
                 if (passiveBuildTypes.includes(cell.type) && cell.status === 'building') {
-                    cell.buildProgress = Math.min(100, cell.buildProgress + 3 * state.gameSpeed);
+                    cell.buildProgress = Math.min(100, cell.buildProgress + 0.5 * state.gameSpeed);
                     if (cell.buildProgress >= 100) {
                         cell.buildProgress = 100;
                         cell.status = 'ready';

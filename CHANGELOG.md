@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.27] - 2026-05-26
+### Fixed
+- **Booking probability cap** (`js/simulation.js`) — clamp `finalChance` to 0.95 max; prevents 3-receptionist + campaign from always booking (chance was hitting 1.22), making campaigns and rush hour actually matter
+- **Builder is now essential** (`js/ui.js`) — passive construction rate reduced from 3%/s to 0.5%/s at 1× speed; rooms now take ~50s solo vs ~19s with builder, giving the $75 hire a clear payoff
+- **Builder auto-hire override** (`ai-agent/agent.js`) — agent automatically hires a builder whenever rooms are under construction and no builder is present; fires before LLM turn
+
 ## [0.3.26] - 2026-05-26
 ### Agent (`ai-agent/agent.js`)
 - **Housekeeper backlog override** — auto-hire fires whenever dirty ≥ 2 and under cap (was only when hk=0); prevents hotel jamming up with 5+ dirty rooms and no rebook

@@ -563,6 +563,17 @@ async function tick(page, turn, logger, session) {
         // Don't return — continue to LLM for the main action this turn
     }
 
+    // ── Pre-LLM override: hire builder when rooms building and none on crew ──
+    // Passive build rate is now 0.5%/s — builder (3.2%/s at 4×) is essential for timely construction
+    if (rs.building > 0 && gs.staff.builder === 0 && gs.affordability.canHireBuilder) {
+        const override = { action: 'hire_staff', params: { type: 'builder' }, reasoning: `[auto] ${rs.building} room(s) building, no builder — construction would take ~50s vs ~20s` };
+        console.log(`         ⚡ override → hire_staff {builder} (${rs.building} building, 0 builders)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
     // ── Pre-LLM override: auto-upgrade room when affordable and new build is not viable ──
     if (gs.affordability.canUpgradeRoom && gs.upgradeTargets.length > 0 &&
         !gs.affordability.canBuildRoom && gs.builtCount >= 3) {
