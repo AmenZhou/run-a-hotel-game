@@ -120,7 +120,7 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 ## Money-maximization priorities
 
 1. **Materials first — buy before you build.** Check \`materialShortfall.forRoom\`; if wood or concrete is short, buy_material NOW regardless of price — do not wait for a deal.
-2. **Standing stockpile.** Keep ≥ 20 wood, ≥ 30 concrete, ≥ 5 steel. Buy to refill. **Hard cap: never exceed 50 wood / 80 concrete / 20 steel — excess wastes cash that should go toward builds.** Never buy materials if it would leave cash < $800 (unless buying specifically to cover a materialShortfall).
+2. **Standing stockpile.** Keep ≥ 20 wood, ≥ 30 concrete, ≥ 5 steel. Buy to refill. **Hard cap: never exceed 50 wood / 80 concrete / 20 steel — excess wastes cash that should go toward builds.** Never buy materials if it would leave cash < $300 (unless buying specifically to cover a materialShortfall).
 3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Never fire-then-rehire; only fire if dirty = 0 for 2+ consecutive turns. Cap: 1 per 2 dirty rooms.
 4. **Receptionist cap.** 1 per 2 ready rooms, max 3 total. Do not hire beyond this — extra receptionists waste cash.
 5. **Builder cap.** 1 per room currently building, max 2. Fire ALL builders the turn \`roomSummary.building = 0\`.
@@ -461,8 +461,8 @@ function clampActionToAffordability(action, gs) {
         if (alreadyEnough) {
             return { action: { action: 'wait', params: {}, reasoning: `[clamped: ${mat} at cap ${stockpileCap[mat]}]` }, clamped: true, from: orig };
         }
-        if (!shortfallForRoom && cashAfterBuy < 800) {
-            return { action: { action: 'wait', params: {}, reasoning: `[clamped: buy would drop cash below $800 reserve]` }, clamped: true, from: orig };
+        if (!shortfallForRoom && cashAfterBuy < 300) {
+            return { action: { action: 'wait', params: {}, reasoning: `[clamped: buy would drop cash below $300 reserve]` }, clamped: true, from: orig };
         }
     }
     if (orig === 'build_room' && !af.canBuildRoom) {
@@ -569,6 +569,7 @@ async function tick(page, turn, logger, session) {
         console.log(`         ⚡ override → upgrade_room (${t.f},${t.r},${t.c}) lvl ${t.level}`);
         logger.write({ type: 'override', turn, ...override });
         session.actionCounts['upgrade_room'] = (session.actionCounts['upgrade_room'] || 0) + 1;
+        session.roomsUpgraded = (session.roomsUpgraded || 0) + 1;
         await execute(page, override);
         return;
     }
