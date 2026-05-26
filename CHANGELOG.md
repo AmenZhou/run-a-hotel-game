@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.31] - 2026-05-26
+### Fixed
+- **Clamped-action log records** (`ai-agent/agent.js`) — 9 override records logged per run with `action=null, params=null`; clamped actions now write `type: blocked_action` with `attempted/reason/action/reasoning` fields instead of a malformed override record
+- **buy_material cash floor guard** (`ai-agent/agent.js`) — added clamp: if buying materials would leave cash < $1,500 (room build cost), reject the purchase with a wait; prevents the 5-turn cash-drought loop (T32: $702 → buy $485 concrete → $217 left → stuck)
+- **Auto-upgrade fires too late** (`ai-agent/agent.js`) — removed `!canBuildRoom` gate; upgrade now fires whenever `builtCount ≥ 4` and no rooms are building, so level-1 rooms get upgraded to higher rent without waiting for the agent to go broke
+- **System prompt rules 1–2 updated** (`ai-agent/agent.js`) — buy_material rule now includes the $1,500 cash-floor constraint; upgrade priority explicitly mentions "4+ rooms then upgrade" pattern
+
 ## [0.3.30] - 2026-05-26
 ### Added
 - **Surge pricing** (`js/simulation.js`) — at checkout, hotel fill rate drives a rent premium: +20% at ≥70% occupancy, +40% at ≥90%; payout particle shows ⚡ suffix to flag the premium

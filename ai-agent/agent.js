@@ -119,8 +119,8 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 
 ## Money-maximization priorities
 
-1. **Build rooms.** This is your primary job. Output \`build_room\` whenever affordable and rooms < max. Do NOT defer room builds to buy materials you don't need yet.
-2. **Buy materials ONLY when short.** Only buy if you will be short for the NEXT build_room or upgrade_room action. Target: 25 wood, 30 concrete, 5 steel. **Never buy if current stock already covers next build. Never exceed 50 wood / 80 concrete / 20 steel.** Check \`materialShortfall.forRoom\` — if it is empty you do NOT need to buy.
+1. **Build rooms, then upgrade them.** Build rooms to 4+ total, then upgrade the lowest-level ones — Level 4 earns 12× Level 1 rent. The system auto-upgrades when idle; focus LLM turns on building new rooms.
+2. **Buy materials ONLY when short AND cash floor is safe.** Only buy if \`materialShortfall.forRoom\` shows a gap AND your cash after the purchase will still be ≥ $1,500 (the room build cost). If buying would drop cash below $1,500, wait. Never buy to refill stockpile when you have enough for the next build. Never exceed 50 wood / 80 concrete / 20 steel.
 3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Cap: 1 per 3 dirty rooms. Do not hire a 2nd at dirty=2 — a single housekeeper handles the backlog within one cycle.
 4. **Receptionist.** Hire 1 receptionist per 4 ready rooms (max 3 total). At $40 it earns back its cost within minutes via improved booking rates. The system auto-hires the first one; do not re-hire once dismissed.
 5. **Hire 1 builder when rooms are building.** Builder costs $75 and cuts construction time in half — pays back within 5 turns. Fire all builders the moment \`roomSummary.building = 0\`.
@@ -466,6 +466,11 @@ function clampActionToAffordability(action, gs) {
         if (!shortfallForRoom && cashAfterBuy < 300) {
             return { action: { action: 'wait', params: {}, reasoning: `[clamped: buy would drop cash below $300 reserve]` }, clamped: true, from: orig };
         }
+        // Never buy materials that would leave too little cash to cover the next room build
+        const buildCashFloor = CONSTANTS.buildRoomCost.cash; // $1,500
+        if (cashAfterBuy < buildCashFloor) {
+            return { action: { action: 'wait', params: {}, reasoning: `[clamped: buying ${action.params.amount} ${mat} (~$${Math.round(cost)}) would leave $${Math.round(cashAfterBuy)} — below $${buildCashFloor} build floor; accumulate cash first]` }, clamped: true, from: orig };
+        }
     }
     if (orig === 'build_room' && !af.canBuildRoom) {
         return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot build]`.trim() }, clamped: true, from: orig };
@@ -576,9 +581,12 @@ async function tick(page, turn, logger, session) {
         return;
     }
 
-    // ── Pre-LLM override: auto-upgrade room when affordable and new build is not viable ──
-    if (gs.affordability.canUpgradeRoom && gs.upgradeTargets.length > 0 &&
-        !gs.affordability.canBuildRoom && gs.builtCount >= 3) {
+    // ── Pre-LLM override: auto-upgrade room ──
+    // Fires when: affordable AND idle (nothing building) AND enough rooms to spare one for upgrade
+    // With 4+ rooms, upgrading is better ROI than adding another level-1 room (lvl4 = 12× rent)
+    const upgradeReady = gs.affordability.canUpgradeRoom && gs.upgradeTargets.length > 0 && rs.building === 0;
+    const upgradeCondition = upgradeReady && (gs.builtCount >= 4 || !gs.affordability.canBuildRoom && gs.builtCount >= 3);
+    if (upgradeCondition) {
         const t = gs.upgradeTargets[0];
         const override = { action: 'upgrade_room', params: { f: t.f, r: t.r, c: t.c }, reasoning: `[auto] Upgrade room (${t.f},${t.r},${t.c}) lvl ${t.level} → ${t.level + 1} for higher rent` };
         console.log(`         ⚡ override → upgrade_room (${t.f},${t.r},${t.c}) lvl ${t.level}`);
@@ -754,7 +762,7 @@ async function tick(page, turn, logger, session) {
     action = actionAfterClamp;
     if (clamped) {
         console.log(`         ⚡ clamped ${clampedFrom} → wait (affordability)`);
-        logger.write({ type: 'override', turn, from: clampedFrom, to: 'wait', reason: 'affordability_clamp' });
+        logger.write({ type: 'blocked_action', turn, attempted: clampedFrom, reason: 'affordability_clamp', action: 'wait', reasoning: action.reasoning });
     }
 
     const paramsStr = Object.keys(action.params || {}).length
