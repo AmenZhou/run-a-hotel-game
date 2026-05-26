@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.33] - 2026-05-26
+### Added
+- **Starting cash $100k** (`js/constants.js`) — `STARTING_CASH` raised from $10,000 to $100,000 to enable large-scale testing and rapid expansion scenarios
+- **Particle cap** (`js/simulation.js`) — `MAX_PARTICLES = 120`; `addParticle` no-ops when limit is hit; prevents particle accumulation from growing unbounded with 10+ active rooms at 4× speed (sleeping guest `zZ` emitters generated 360 particles/second at peak load)
+### Fixed
+- **Animation freeze with many rooms** (`js/simulation.js`, `js/ui.js`):
+  - Removed two `console.log` calls from `triggerGuestBooking` hot path (fired every second; at 4× speed with 10+ rooms the "no vacant room" path dumped long room-state strings to the console every tick)
+  - Upgrade button handler (`js/ui.js`) now guards against `cell.level >= CONSTANTS.roomLevels.length` before incrementing; without this, a level-5 room (beyond the 4-entry array) would crash the checkout path with `CONSTANTS.roomLevels[4].rent` → `TypeError`, silently killing the animation loop
+
 ## [0.3.32] - 2026-05-26
 ### Fixed
 - **`CONSTANTS is not defined` in `clampActionToAffordability`** (`ai-agent/agent.js`) — cash floor guard for `buy_material` referenced bare `CONSTANTS.buildRoomCost.cash` which is a browser global, crashing every LLM `buy_material` action at runtime; replaced with `gs.costs?.buildRoom?.cash || 1500` using the `gs` parameter already in scope; was causing 28 errors per 40-turn run and 0 rooms built (agent accumulated $13,220 purely from facility passive income while doing nothing)

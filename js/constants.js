@@ -4,7 +4,7 @@ const GRID_COLS = 3; // columns per floor (rooms per corridor side)
 const GRID_SIZE = GRID_COLS; // legacy alias used by isometric renderer square loops
 
 /** Starting cash for new games and full resets (`startNewGame`, first load with no save). */
-const STARTING_CASH = 10000;
+const STARTING_CASH = 100000;
 
 // Constant Pricing & Values
 const CONSTANTS = {

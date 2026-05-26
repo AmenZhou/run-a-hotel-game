@@ -1,10 +1,12 @@
 // Simulation — depends on constants.js and state.js
 
 // Particle Engine Implementation
+const MAX_PARTICLES = 120;
 function addParticle(x, y, text, color, vx = 0, vy = -1, size = 10, type = 'text') {
+    if (state.particles.length >= MAX_PARTICLES) return;
     state.particles.push({
         x, y, text, color, vx, vy, size, type,
-        life: 1.0, // starts full life
+        life: 1.0,
         decay: 0.02 + Math.random() * 0.015
     });
 }
@@ -139,20 +141,7 @@ function getVacantRoom() {
 // Checkin trigger logic
 function triggerGuestBooking() {
     const vacant = getVacantRoom();
-    if (!vacant) {
-        // Debug: log room states to help diagnose booking issues
-        const roomStates = [];
-        for (let f = 1; f < state.hotel.length; f++) {
-            for (let r = 0; r < GRID_ROWS; r++) {
-                for (let c = 0; c < GRID_COLS; c++) {
-                    const rm = state.hotel[f][r][c];
-                    if (rm.type === 'guest') roomStates.push(`F${f}R${r}C${c}:${rm.status}(guestId=${rm.guestId})`);
-                }
-            }
-        }
-        console.log('[booking] No vacant room. Staff:', JSON.stringify(state.staff), '| Rooms:', roomStates.join(', ') || 'none');
-        return;
-    }
+    if (!vacant) return;
 
     // Checkin odds boost from star rating + receptionists (+ rush hour)
     const baseChance = 0.32;
@@ -186,7 +175,6 @@ function triggerGuestBooking() {
     finalChance = Math.min(0.95, finalChance);
 
     const roll = Math.random();
-    console.log(`[booking] Vacant: ${vacant.id} | chance=${finalChance.toFixed(2)} roll=${roll.toFixed(2)} → ${roll < finalChance ? 'BOOKED' : 'no show'}`);
     if (roll < finalChance) {
         // Amenities attract VIPs: restaurant +8%, parking +5% on top of base 14%
         const amenityVipBonus = (restaurants > 0 ? 0.08 : 0) + (parking > 0 ? 0.05 : 0);

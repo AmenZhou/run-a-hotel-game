@@ -623,6 +623,10 @@ if (btnUpgrade) {
         const [f, r, c] = select.value.split('-').map(Number);
         const cell = state.hotel[f][r][c];
 
+        if (!cell || cell.level >= CONSTANTS.roomLevels.length) {
+            showToast("Already Max Level", "This room is at the highest tier.", "warning");
+            return;
+        }
         if (state.cash < CONSTANTS.upgradeRoomCost.cash ||
             state.materials.wood < CONSTANTS.upgradeRoomCost.wood ||
             state.materials.steel < CONSTANTS.upgradeRoomCost.steel) {
