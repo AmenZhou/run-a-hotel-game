@@ -550,6 +550,26 @@ async function tick(page, turn, logger, session) {
         // Don't return — continue to LLM for the main action this turn
     }
 
+    // ── Pre-LLM override: hire housekeeper when dirty rooms are backlogged ──
+    if (rs.dirty > 0 && gs.staff.housekeeper === 0 && gs.cash >= gs.costs.buildRoom.cash / 50 && gs.affordability.canHireHousekeeper) {
+        const override = { action: 'hire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${rs.dirty} dirty room(s), no housekeeper — hiring one` };
+        console.log(`         ⚡ override → hire_staff {housekeeper} (${rs.dirty} dirty, 0 hk)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
+    // ── Pre-LLM override: auto-fire builders when no building rooms ──
+    if (gs.staff.builder > 0 && rs.building === 0) {
+        const override = { action: 'fire_staff', params: { type: 'builder' }, reasoning: '[auto] No building rooms — firing idle builder' };
+        console.log(`         ⚡ override → fire_staff {builder} (building=0)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['fire_staff'] = (session.actionCounts['fire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
     // ── Pre-LLM override: fire staff if cash runway < 20s ──
     const wages = gs.financials.wagesPerSec;
     const runway = wages > 0 ? gs.cash / wages : Infinity;
