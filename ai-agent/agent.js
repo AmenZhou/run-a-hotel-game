@@ -123,8 +123,8 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 2. **Standing stockpile.** Keep ≥ 20 wood, ≥ 30 concrete, ≥ 5 steel. Buy to refill. **Hard cap: never exceed 50 wood / 80 concrete / 20 steel — excess wastes cash that should go toward builds.** Never buy materials if it would leave cash < $300 (unless buying specifically to cover a materialShortfall).
 3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Never fire-then-rehire; only fire if dirty = 0 for 2+ consecutive turns. Cap: 1 per 2 dirty rooms.
 4. **Receptionist cap.** 1 per 2 ready rooms, max 3 total. Do not hire beyond this — extra receptionists waste cash.
-5. **Builder cap.** 1 per room currently building, max 2. Fire ALL builders the turn \`roomSummary.building = 0\`.
-6. **Room upgrades after materials stocked.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 15 and concrete ≥ 25 and steel ≥ 3.
+5. **Hire 1 builder when rooms are building.** Builder costs $75 and cuts construction time in half — pays back within 5 turns. Fire all builders the moment \`roomSummary.building = 0\`.
+6. **Room upgrades after materials stocked.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 15 and steel ≥ 6.
 7. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
 8. **Set speed to 4×** on turn 1 — idle time is wasted money.
 9. **Build 1 restaurant ASAP** — the moment you can afford it. Costs $800 cash + 10 wood + 15 concrete + 4 steel. $1.50/s passive income ($6/s at 4× speed) — better ROI than any room. Hire 1 chef right after. **Only build 1 restaurant total.**
@@ -638,6 +638,30 @@ async function tick(page, turn, logger, session) {
     if (gs.facilityCount.parkingReady > 0 && (gs.staff.valet || 0) === 0 && gs.affordability.canHireValet) {
         const override = { action: 'hire_staff', params: { type: 'valet' }, reasoning: '[auto] Parking ready — hiring valet to unlock full $1.00/s income' };
         console.log(`         ⚡ override → hire_staff {valet} (parking staffless)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
+    // ── Pre-LLM override: stack 2nd/3rd chef when cash comfortable (≥$300 after) ──
+    const chefCount = gs.staff.chef || 0;
+    if (gs.facilityCount.restaurantReady > 0 && chefCount < 3 && chefCount > 0 &&
+        gs.cash >= C.staff.chef.cost + 300 && gs.affordability.canHireChef) {
+        const override = { action: 'hire_staff', params: { type: 'chef' }, reasoning: `[auto] Stack chef ${chefCount}→${chefCount + 1} for +25% restaurant income` };
+        console.log(`         ⚡ override → hire_staff {chef} (stacking ${chefCount}→${chefCount + 1})`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
+    // ── Pre-LLM override: stack 2nd/3rd valet when cash comfortable (≥$300 after) ──
+    const valetCount = gs.staff.valet || 0;
+    if (gs.facilityCount.parkingReady > 0 && valetCount < 3 && valetCount > 0 &&
+        gs.cash >= C.staff.valet.cost + 300 && gs.affordability.canHireValet) {
+        const override = { action: 'hire_staff', params: { type: 'valet' }, reasoning: `[auto] Stack valet ${valetCount}→${valetCount + 1} for +25% parking income` };
+        console.log(`         ⚡ override → hire_staff {valet} (stacking ${valetCount}→${valetCount + 1})`);
         logger.write({ type: 'override', turn, ...override });
         session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
         await execute(page, override);
