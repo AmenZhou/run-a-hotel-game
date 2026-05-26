@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.25] - 2026-05-26
+### Balance
+- **Restaurant cost reduced** — $800 cash + 10 wood + 15 concrete + 4 steel (was $2200 + 22 wood + 30 concrete + 8 steel); now affordable at turn 20–30
+- **Parking cost reduced** — $600 cash + 20 concrete + 6 steel (was $1800 + 40 concrete + 12 steel)
+- **Restaurant income raised** — $1.50/s (was $0.80/s); ROI now clearly beats a Level-1 room
+- **Parking income raised** — $1.00/s (was $0.50/s)
+- **Upgrade room cost reduced** — $500 cash (was $800); 12 wood + 6 steel unchanged
+### Agent (`ai-agent/agent.js`)
+- **Pre-LLM override: auto-build restaurant** — fires when 3+ rooms built and affordable; no LLM call needed
+- **Pre-LLM override: auto-hire chef** — fires immediately when restaurant is ready and no chef on staff
+- **Pre-LLM override: auto-build parking** — fires when restaurant exists and parking affordable
+- **Pre-LLM override: auto-hire valet** — fires immediately when parking is ready and no valet on staff
+- **Strategy rules 9–11 updated** — new costs, new income rates, ROI comparison against rooms
+- **Upgrade cost reference updated** in system prompt ($500)
+
 ## [0.3.24] - 2026-05-26
 ### Agent (`ai-agent/agent.js`)
 - **Strategy rewrite** — replaced 8 heuristic rules with tighter caps and materials-first logic:

@@ -20,19 +20,19 @@ const CONSTANTS = {
     },
     /** Guest-floor amenity — uses same grid slot as a suite; boosts walk-in odds when ready. */
     buildRestaurantCost: {
-        cash: 2200,
-        concrete: 30,
-        wood: 22,
-        steel: 8
+        cash: 800,
+        concrete: 15,
+        wood: 10,
+        steel: 4
     },
     /** Structured parking / motor court — same grid rules as restaurant. */
     buildParkingCost: {
-        cash: 1800,
-        concrete: 40,
-        steel: 12
+        cash: 600,
+        concrete: 20,
+        steel: 6
     },
     upgradeRoomCost: {
-        cash: 800,
+        cash: 500,
         wood: 12,
         steel: 6
     },
@@ -45,8 +45,8 @@ const CONSTANTS = {
         valet: { cost: 45 }
     },
     /** Passive income per second for ready amenities (full rate requires at least 1 staff). */
-    restaurantIncome: 0.80,
-    parkingIncome: 0.50,
+    restaurantIncome: 1.50,
+    parkingIncome: 1.00,
     /** Fraction of income earned when facility has no supporting staff (chef / valet). */
     facilityUnstaffedFactor: 0.5,
     /** Staff department upgrades — cash only; each role has its own level track (see `jobs`). */

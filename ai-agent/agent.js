@@ -106,7 +106,7 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
   Lvl 3 Executive = $75
   Lvl 4 Penthouse = $180
 
-**Upgrade a room:** costs $800 + 12 wood + 6 steel. Room must be status=ready and not occupied.
+**Upgrade a room:** costs $500 + 12 wood + 6 steel. Room must be status=ready and not occupied.
 
 **Staff (one-time hiring fee only — no per-second wages):**
   housekeeper  $30  — auto-cleans dirty rooms; without one dirty rooms never rebook
@@ -127,9 +127,9 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 6. **Room upgrades after materials stocked.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 15 and concrete ≥ 25 and steel ≥ 3.
 7. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
 8. **Set speed to 4×** on turn 1 — idle time is wasted money.
-9. **Build 1 restaurant after 3+ guest rooms.** $0.80/s passive income beats a Lvl-1 room. Hire 1 chef right after — unlocks full rate, pays back in ~3 min at 4× speed.
-10. **Build 1 parking lot after you have a restaurant.** $0.50/s stacks with restaurant income. Hire 1 valet immediately.
-11. **Stack up to 3 chefs / 3 valets** once you have the facilities — each pays back quickly.
+9. **Build 1 restaurant ASAP** — the moment you can afford it. Costs $800 cash + 10 wood + 15 concrete + 4 steel. $1.50/s passive income ($6/s at 4× speed) — better ROI than any room. Hire 1 chef right after. **Only build 1 restaurant total.**
+10. **Build 1 parking lot right after the restaurant.** Costs $600 cash + 20 concrete + 6 steel. $1.00/s passive income ($4/s at 4×). Hire 1 valet immediately. **Only build 1 parking lot total.**
+11. **Stack up to 3 chefs / 3 valets** — each one adds +25% income on the facility; all three pay back within 30 turns.
 
 ## Affordability rule
 
@@ -153,9 +153,9 @@ Return ONLY a valid JSON object — no markdown, no explanation outside the JSON
 Notes:
 - build_room: takes no params — builds the next guest suite (respects max room cap).
 - build_restaurant / build_parking: no params — amenities on the next empty guest-floor cell (or new floor).
-  Restaurant earns $0.80/s passive income (only $0.40/s without a chef). Each chef adds +25% (max 3).
-  Parking earns $0.50/s passive income (only $0.25/s without a valet). Each valet adds +25% (max 3).
-  Both also improve walk-in booking odds. ROI beats a Lvl-1 room — build after you have 3+ guest rooms.
+  Restaurant earns $1.50/s passive income (only $0.75/s without a chef). Each chef adds +25% (max 3).
+  Parking earns $1.00/s passive income (only $0.50/s without a valet). Each valet adds +25% (max 3).
+  Both also improve walk-in booking odds. Both have better ROI than a new room — build ASAP after 3+ rooms.
 - fire_staff: dismisses one staff of the given type (frees a slot; there is no ongoing wage to remove).
 - set_speed 4: do this on turn 1 or as soon as the hotel is stable — idle time is wasted money.`;
 
@@ -312,12 +312,14 @@ async function readState(page) {
                     materials.wood >= costs.buildRoom.wood,
                 canBuildRestaurant: restaurantButtonEnabled &&
                     canPlaceRoom &&
+                    facilityCount.restaurant === 0 &&
                     gs_cash >= costs.buildRestaurant.cash &&
                     materials.concrete >= costs.buildRestaurant.concrete &&
                     materials.wood >= costs.buildRestaurant.wood &&
                     materials.steel >= costs.buildRestaurant.steel,
                 canBuildParking: parkingButtonEnabled &&
                     canPlaceRoom &&
+                    facilityCount.parking === 0 &&
                     gs_cash >= costs.buildParking.cash &&
                     materials.concrete >= costs.buildParking.concrete &&
                     materials.steel >= costs.buildParking.steel,
@@ -590,6 +592,46 @@ async function tick(page, turn, logger, session) {
         console.log(`         ⚡ override → fire_staff {builder} (building=0)`);
         logger.write({ type: 'override', turn, ...override });
         session.actionCounts['fire_staff'] = (session.actionCounts['fire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
+    // ── Pre-LLM override: auto-build restaurant (1+ rooms, no restaurant yet, affordable) ──
+    if (gs.affordability.canBuildRestaurant && gs.facilityCount.restaurant === 0 && gs.builtCount >= 1) {
+        const override = { action: 'build_restaurant', params: {}, reasoning: '[auto] 3+ rooms — building restaurant for $1.50/s passive income' };
+        console.log(`         ⚡ override → build_restaurant (${gs.builtCount} rooms built)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['build_restaurant'] = (session.actionCounts['build_restaurant'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
+    // ── Pre-LLM override: auto-hire chef when restaurant exists and no chef ──
+    if (gs.facilityCount.restaurantReady > 0 && (gs.staff.chef || 0) === 0 && gs.affordability.canHireChef) {
+        const override = { action: 'hire_staff', params: { type: 'chef' }, reasoning: '[auto] Restaurant ready — hiring chef to unlock full $1.50/s income' };
+        console.log(`         ⚡ override → hire_staff {chef} (restaurant staffless)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
+    // ── Pre-LLM override: auto-build parking (restaurant exists, no parking yet, affordable) ──
+    if (gs.affordability.canBuildParking && gs.facilityCount.parking === 0 && gs.facilityCount.restaurant > 0) {
+        const override = { action: 'build_parking', params: {}, reasoning: '[auto] Restaurant built — adding parking for +$1.00/s passive income' };
+        console.log(`         ⚡ override → build_parking (restaurant=${gs.facilityCount.restaurant})`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['build_parking'] = (session.actionCounts['build_parking'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
+    // ── Pre-LLM override: auto-hire valet when parking exists and no valet ──
+    if (gs.facilityCount.parkingReady > 0 && (gs.staff.valet || 0) === 0 && gs.affordability.canHireValet) {
+        const override = { action: 'hire_staff', params: { type: 'valet' }, reasoning: '[auto] Parking ready — hiring valet to unlock full $1.00/s income' };
+        console.log(`         ⚡ override → hire_staff {valet} (parking staffless)`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
         await execute(page, override);
         return;
     }
