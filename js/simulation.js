@@ -188,10 +188,11 @@ function triggerGuestBooking() {
     const roll = Math.random();
     console.log(`[booking] Vacant: ${vacant.id} | chance=${finalChance.toFixed(2)} roll=${roll.toFixed(2)} → ${roll < finalChance ? 'BOOKED' : 'no show'}`);
     if (roll < finalChance) {
-        // Deluxe+ rooms can rarely attract a VIP walk-in
-        const wantVip = vacant.level >= 2 && Math.random() < 0.14;
+        // Amenities attract VIPs: restaurant +8%, parking +5% on top of base 14%
+        const amenityVipBonus = (restaurants > 0 ? 0.08 : 0) + (parking > 0 ? 0.05 : 0);
+        const wantVip = vacant.level >= 2 && Math.random() < (0.14 + amenityVipBonus);
         const guestId = spawnWalker(wantVip ? 'vip' : 'guest', vacant);
-        vacant.guestId = guestId; // Reserve room spot
+        vacant.guestId = guestId;
         if (wantVip) {
             showToast('VIP inquiry!', 'A high-roller wants your upgraded suite.', 'success');
         }
@@ -553,16 +554,29 @@ function updateWalkers(dt) {
                             room.guestId = null;
 
                             let rent = CONSTANTS.roomLevels[room.level - 1].rent;
-                            // VIP gets huge multiplier payout
-                            if (w.type === 'vip') {
-                                rent *= 5;
-                            }
+                            if (w.type === 'vip') rent *= 5;
+
+                            // Surge pricing: hotel fill rate drives a premium when rooms are scarce
+                            let builtRooms = 0, occupiedRooms = 0;
+                            for (let f = 1; f < state.hotel.length; f++)
+                                for (let rr = 0; rr < GRID_ROWS; rr++)
+                                    for (let cc = 0; cc < GRID_COLS; cc++) {
+                                        const rm = state.hotel[f][rr][cc];
+                                        if (rm.type === 'guest') { builtRooms++; if (rm.guestId) occupiedRooms++; }
+                                    }
+                            const occupancyPct = builtRooms > 0 ? occupiedRooms / builtRooms : 0;
+                            let surgeMultiplier = 1.0;
+                            if (occupancyPct >= 0.9) surgeMultiplier = 1.4;
+                            else if (occupancyPct >= 0.7) surgeMultiplier = 1.2;
+                            if (surgeMultiplier > 1.0) rent = Math.round(rent * surgeMultiplier);
+
                             state.cash += rent;
                             AudioEngine.playCash();
 
                             if (!state.fun) {
-                                state.fun = { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0 };
+                                state.fun = { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0, recentCheckoutTimes: [] };
                             }
+                            if (!state.fun.recentCheckoutTimes) state.fun.recentCheckoutTimes = [];
                             state.fun.checkouts++;
                             const nowMs = typeof performance !== 'undefined' ? performance.now() : 0;
                             let tip = 0;
@@ -584,22 +598,36 @@ function updateWalkers(dt) {
                             }
                             state.fun.lastCheckoutAt = nowMs;
 
+                            // Checkout chain → rush hour trigger (3 checkouts within 15 real seconds)
+                            state.fun.recentCheckoutTimes.push(nowMs);
+                            state.fun.recentCheckoutTimes = state.fun.recentCheckoutTimes.filter(t => nowMs - t < 15_000);
+                            if (state.fun.recentCheckoutTimes.length >= 3 && state.fun.rushHourTicks === 0) {
+                                state.fun.rushHourTicks = 42;
+                                state.fun.recentCheckoutTimes = [];
+                                showToast('Rush hour!', 'Word is spreading fast — guests are flooding in!', 'success');
+                            }
+
                             const n = state.fun.checkouts;
                             if ([1, 5, 10, 25, 50, 100].includes(n)) {
                                 showToast('Milestone', `${n} guest stays completed — keep building!`, 'success');
                             }
 
-                            // Cash particles floating
+                            // Cash particle — ⚡ suffix flags surge pricing payout
                             const scr = isoToScreen(w.c, w.r, w.f, CanvasRenderer.canvas.width, CanvasRenderer.canvas.height);
                             const textPos = getIsoLoc(scr.x, scr.y, 0.5, 0.5, 0.6);
-                            addParticle(textPos.x, textPos.y, `+$${rent}`, '#10b981', 0, -1.2, 12, 'text');
+                            const rentLabel = surgeMultiplier > 1.0 ? `+$${rent} ⚡` : `+$${rent}`;
+                            addParticle(textPos.x, textPos.y, rentLabel, '#10b981', 0, -1.2, 12, 'text');
                         }
 
                         w.state = 'exiting';
                         w.targetF = 0; w.targetR = 1; w.targetC = 1;
                         w.targetU = 0.9; w.targetV = 0.9;
-                        w.moodText = w.type === 'vip' ? '👑 Marvelous service!' : '👋 Bye!';
-                        w.moodTimer = 2.0;
+                        // Guest mood reflects stay quality
+                        if (w.type === 'vip') w.moodText = '👑 Spectacular!';
+                        else if (surgeMultiplier > 1.0) w.moodText = '🤩 Peak stay!';
+                        else if (tip > 0) w.moodText = '😊 Loved it!';
+                        else w.moodText = '👋 Thanks!';
+                        w.moodTimer = 2.5;
                     }
                 }
                 else if (w.state === 'exiting') {

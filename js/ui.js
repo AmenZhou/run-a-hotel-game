@@ -900,7 +900,7 @@ window.startNewGame = function (silent = false) {
     state.zoom = CONSTANTS.viewZoom.reset;
     state.panX = 0;
     state.panY = 0;
-    state.fun = { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0 };
+    state.fun = { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0, recentCheckoutTimes: [] };
     state.staffTrainingLevels = { housekeeper: 0, builder: 0, receptionist: 0, chef: 0, valet: 0 };
     state.hotelOwner = { name: 'Jordan Blake', title: 'Proprietor', animFrame: 0 };
     initHotel();

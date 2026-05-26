@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.30] - 2026-05-26
+### Added
+- **Surge pricing** (`js/simulation.js`) — at checkout, hotel fill rate drives a rent premium: +20% at ≥70% occupancy, +40% at ≥90%; payout particle shows ⚡ suffix to flag the premium
+- **Checkout-chain rush hour** (`js/simulation.js`) — 3 checkouts within 15 real seconds triggers rush hour automatically (organic trigger on top of existing random 3.5%/s chance); rewards efficient operations rather than pure luck
+- **VIP amenity boost** (`js/simulation.js`) — restaurant ready adds +8%, parking ready adds +5% to VIP walk-in probability on Deluxe+ rooms; full amenities → up to 27% VIP chance (was flat 14%)
+- **Guest mood display** (`js/simulation.js`) — checkout mood emoji reflects stay quality: 🤩 surge stay, 👑 VIP, 😊 tipped, 👋 standard; previously hardcoded "Bye!"
+### Fixed
+- `state.fun.recentCheckoutTimes` initialised in state, save/load, and `startNewGame` so the checkout-chain tracker never hits undefined (`js/state.js`, `js/ui.js`)
+
 ## [0.3.29] - 2026-05-26
 ### Agent (`ai-agent/agent.js`)
 - **Auto-hire receptionist override** — fires when hotel has 2+ rooms and no receptionist; +20% booking rate for $40 one-time cost

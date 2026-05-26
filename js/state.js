@@ -53,7 +53,8 @@ const state = {
         checkouts: 0,
         tipsTotal: 0,
         rushHourTicks: 0,
-        lastCheckoutAt: 0
+        lastCheckoutAt: 0,
+        recentCheckoutTimes: []
     },
     /** Fractional cash accumulators for facility passive income (avoids floating-point drift). */
     facilityIncomeAccum: {
@@ -128,8 +129,8 @@ function saveGame() {
         gameSpeed: state.gameSpeed,
         isoYaw: state.isoYaw ?? 0,
         fun: state.fun
-            ? { ...state.fun, rushHourTicks: 0 }
-            : { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0 },
+            ? { ...state.fun, rushHourTicks: 0, recentCheckoutTimes: [] }
+            : { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0, recentCheckoutTimes: [] },
         staffTrainingLevels: {
             housekeeper: Math.min(
                 CONSTANTS.staffTraining.maxLevel,
@@ -191,8 +192,10 @@ function loadGame() {
             tipsTotal: 0,
             rushHourTicks: 0,
             lastCheckoutAt: 0,
+            recentCheckoutTimes: [],
             ...(snap.fun && typeof snap.fun === 'object' ? snap.fun : {}),
-            rushHourTicks: 0
+            rushHourTicks: 0,
+            recentCheckoutTimes: []
         };
         const cap = CONSTANTS.staffTraining.maxLevel;
         const clampLv = v => Math.min(cap, Math.max(0, v | 0));
