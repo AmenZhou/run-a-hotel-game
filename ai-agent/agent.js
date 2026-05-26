@@ -119,10 +119,10 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 
 ## Money-maximization priorities
 
-1. **Materials first — buy before you build.** Check \`materialShortfall.forRoom\`; if wood or concrete is short, buy_material NOW regardless of price — do not wait for a deal.
-2. **Standing stockpile.** Keep ≥ 20 wood, ≥ 30 concrete, ≥ 5 steel. Buy to refill. **Hard cap: never exceed 50 wood / 80 concrete / 20 steel — excess wastes cash that should go toward builds.** Never buy materials if it would leave cash < $300 (unless buying specifically to cover a materialShortfall).
-3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Never fire-then-rehire; only fire if dirty = 0 for 2+ consecutive turns. Cap: 1 per 2 dirty rooms.
-4. **Receptionist cap.** 1 per 2 ready rooms, max 3 total. Do not hire beyond this — extra receptionists waste cash.
+1. **Build rooms.** This is your primary job. Output \`build_room\` whenever affordable and rooms < max. Do NOT defer room builds to buy materials you don't need yet.
+2. **Buy materials ONLY when short.** Only buy if you will be short for the NEXT build_room or upgrade_room action. Target: 25 wood, 30 concrete, 5 steel. **Never buy if current stock already covers next build. Never exceed 50 wood / 80 concrete / 20 steel.** Check \`materialShortfall.forRoom\` — if it is empty you do NOT need to buy.
+3. **Housekeeper discipline.** Hire 1 housekeeper when \`roomSummary.dirty > 0\`. Cap: 1 per 3 dirty rooms. Do not hire a 2nd at dirty=2 — a single housekeeper handles the backlog within one cycle.
+4. **Receptionist.** Hire 1 receptionist per 4 ready rooms (max 3 total). At $40 it earns back its cost within minutes via improved booking rates. The system auto-hires the first one; do not re-hire once dismissed.
 5. **Hire 1 builder when rooms are building.** Builder costs $75 and cuts construction time in half — pays back within 5 turns. Fire all builders the moment \`roomSummary.building = 0\`.
 6. **Room upgrades after materials stocked.** Lvl 4 earns 12× Lvl 1 — upgrade rooms once wood ≥ 15 and steel ≥ 6.
 7. **Build rooms to fill capacity.** More rooms = more simultaneous guests = more income.
@@ -589,8 +589,10 @@ async function tick(page, turn, logger, session) {
         return;
     }
 
-    // ── Pre-LLM override: hire housekeeper when dirty rooms are backlogged ──
-    if (gs.affordability.canHireHousekeeper && rs.dirty >= 2) {
+    // ── Pre-LLM override: hire housekeeper when dirty rooms backlog ≥ 3 ──
+    // Threshold is 3 (not 2) to avoid hire→fire oscillation: with 1 HK present,
+    // 2 dirty rooms clears in one clean cycle, so hiring a 2nd only to fire it next tick wastes $30.
+    if (gs.affordability.canHireHousekeeper && rs.dirty >= 3) {
         const override = { action: 'hire_staff', params: { type: 'housekeeper' }, reasoning: `[auto] ${rs.dirty} dirty room(s), hiring housekeeper (${gs.staff.housekeeper} → ${gs.staff.housekeeper + 1})` };
         console.log(`         ⚡ override → hire_staff {housekeeper} (${rs.dirty} dirty, ${gs.staff.housekeeper} hk)`);
         logger.write({ type: 'override', turn, ...override });
@@ -675,6 +677,17 @@ async function tick(page, turn, logger, session) {
         gs.cash >= C.staff.valet.cost + 300 && gs.affordability.canHireValet) {
         const override = { action: 'hire_staff', params: { type: 'valet' }, reasoning: `[auto] Stack valet ${valetCount}→${valetCount + 1} for +25% parking income` };
         console.log(`         ⚡ override → hire_staff {valet} (stacking ${valetCount}→${valetCount + 1})`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
+        await execute(page, override);
+        return;
+    }
+
+    // ── Pre-LLM override: auto-hire first receptionist when hotel has 2+ rooms ──
+    // Receptionist adds +20% booking rate; at $40 one-time cost it pays back in minutes.
+    if (gs.staff.receptionist === 0 && gs.builtCount >= 2 && gs.affordability.canHireReceptionist) {
+        const override = { action: 'hire_staff', params: { type: 'receptionist' }, reasoning: `[auto] ${gs.builtCount} rooms built, no receptionist — hire for +20% booking rate` };
+        console.log(`         ⚡ override → hire_staff {receptionist} (${gs.builtCount} rooms, no receptionist)`);
         logger.write({ type: 'override', turn, ...override });
         session.actionCounts['hire_staff'] = (session.actionCounts['hire_staff'] || 0) + 1;
         await execute(page, override);

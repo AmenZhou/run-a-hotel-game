@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.29] - 2026-05-26
+### Agent (`ai-agent/agent.js`)
+- **Auto-hire receptionist override** — fires when hotel has 2+ rooms and no receptionist; +20% booking rate for $40 one-time cost
+- **Housekeeper oscillation fix** — raise backlog-hire threshold from `dirty ≥ 2` to `dirty ≥ 3`; prevents wasteful hire→fire cycles every time 2 rooms get dirty simultaneously
+- **Material-buying discipline** — system prompt rule updated: only buy materials when specifically short for the next build, not as a standing stockpile refill loop; removes 67%-of-LLM-turns material hoarding pattern
+
 ## [0.3.28] - 2026-05-26
 ### Fixed
 - **`C is not defined` crash in tick handler** (`ai-agent/agent.js`) — `window.CONSTANTS` was scoped inside `readState()` but referenced at lines 661/673 in `tick()` for chef/valet stack overrides; crashed 80% of ticks (32/40), silencing the LLM completely after T6; fix: read `C` at the top of `tick()`
