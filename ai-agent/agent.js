@@ -666,9 +666,15 @@ async function tick(page, turn, logger, session) {
 
     // ── Ask LLM ──
     const allowed = validActionsThisTurn(gs);
+    const fc = gs.facilityCount;
+    const facilityNote = [
+        fc.restaurant > 0 ? `restaurant already built (${fc.restaurantReady > 0 ? 'ready' : 'building'}) — do NOT build another` : null,
+        fc.parking > 0    ? `parking already built (${fc.parkingReady    > 0 ? 'ready' : 'building'}) — do NOT build another`    : null,
+    ].filter(Boolean).join('; ');
     const raw = await askLLM(
         SYSTEM_PROMPT,
         `Game state:\n${JSON.stringify(gs, null, 2)}\n\n` +
+            (facilityNote ? `NOTE: ${facilityNote}.\n\n` : '') +
             `Valid actions this turn (output JSON with \"action\" exactly one of: wait, buy_material, set_speed, build_room, build_restaurant, build_parking, upgrade_room, hire_staff, fire_staff — use params as in the system prompt):\n` +
             `${allowed.join(', ')}\n\n` +
             `What single action maximizes my cash? Reply with one JSON action.`
