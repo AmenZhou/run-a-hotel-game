@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.34] - 2026-05-26
+### Fixed
+- **Animation freeze on guest checkout** (`js/simulation-walkers.js`) — `surgeMultiplier` and `tip` were declared with `let` inside `if (room) {…}` block but referenced outside it for mood text (`🤩 Peak stay!`, `😊 Loved it!`); threw `ReferenceError: surgeMultiplier is not defined` on every checkout with 2+ rooms, killing the `requestAnimationFrame` loop; fix: hoist both declarations to the `if (w.stayTime <= 0)` scope
+
 ## [0.3.33] - 2026-05-26
 ### Added
 - **Starting cash $100k** (`js/constants.js`) — `STARTING_CASH` raised from $10,000 to $100,000 to enable large-scale testing and rapid expansion scenarios

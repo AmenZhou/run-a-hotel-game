@@ -348,6 +348,8 @@ function updateWalkers(dt) {
 
                     if (w.stayTime <= 0) {
                         // Checkout! Exit suite, turn suite dirty, pay cash
+                        let surgeMultiplier = 1.0; // hoisted — referenced outside if(room) for mood text
+                        let tip = 0;               // hoisted — referenced outside if(room) for mood text
                         const room = w.assignedRoom;
                         if (room) {
                             room.status = 'dirty';
@@ -366,7 +368,7 @@ function updateWalkers(dt) {
                                         if (rm.type === 'guest') { builtRooms++; if (rm.guestId) occupiedRooms++; }
                                     }
                             const occupancyPct = builtRooms > 0 ? occupiedRooms / builtRooms : 0;
-                            let surgeMultiplier = 1.0;
+                            surgeMultiplier = 1.0;
                             if (occupancyPct >= 0.9) surgeMultiplier = 1.4;
                             else if (occupancyPct >= 0.7) surgeMultiplier = 1.2;
                             if (surgeMultiplier > 1.0) rent = Math.round(rent * surgeMultiplier);
@@ -380,7 +382,6 @@ function updateWalkers(dt) {
                             if (!state.fun.recentCheckoutTimes) state.fun.recentCheckoutTimes = [];
                             state.fun.checkouts++;
                             const nowMs = typeof performance !== 'undefined' ? performance.now() : 0;
-                            let tip = 0;
                             if (Math.random() < 0.4) {
                                 tip = Math.max(1, Math.round(rent * (0.07 + Math.random() * 0.13)));
                                 state.cash += tip;
