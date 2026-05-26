@@ -550,8 +550,9 @@ async function tick(page, turn, logger, session) {
         // Don't return — continue to LLM for the main action this turn
     }
 
-    // ── Pre-LLM override: auto-upgrade room when affordable and target available ──
-    if (gs.affordability.canUpgradeRoom && gs.upgradeTargets.length > 0) {
+    // ── Pre-LLM override: auto-upgrade room when affordable and new build is not viable ──
+    if (gs.affordability.canUpgradeRoom && gs.upgradeTargets.length > 0 &&
+        !gs.affordability.canBuildRoom && gs.builtCount >= 3) {
         const t = gs.upgradeTargets[0];
         const override = { action: 'upgrade_room', params: { f: t.f, r: t.r, c: t.c }, reasoning: `[auto] Upgrade room (${t.f},${t.r},${t.c}) lvl ${t.level} → ${t.level + 1} for higher rent` };
         console.log(`         ⚡ override → upgrade_room (${t.f},${t.r},${t.c}) lvl ${t.level}`);
