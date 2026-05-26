@@ -329,11 +329,11 @@ async function readState(page) {
                     rooms.filter(r => r.status === 'building').length > 0 &&
                     s.staff.builder < Math.min(2, Math.max(1, rooms.filter(r => r.status === 'building').length)),
                 canHireReceptionist: gs_cash >= C.staff.receptionist.cost &&
-                    s.staff.receptionist < Math.min(3, Math.max(1, Math.floor(rooms.filter(r => r.status === 'ready').length / 2))),
+                    s.staff.receptionist < Math.min(3, Math.max(1, Math.floor(builtCount / 2))),
                 canFireHousekeeper: s.staff.housekeeper > 0,
                 canFireBuilder: s.staff.builder > 0 && rooms.filter(r => r.status === 'building').length === 0,
                 canFireReceptionist: s.staff.receptionist > 0 &&
-                    s.staff.receptionist > Math.min(3, Math.max(1, Math.floor(rooms.filter(r => r.status === 'ready').length / 2))),
+                    s.staff.receptionist > Math.min(3, Math.max(1, Math.floor(builtCount / 2))),
                 canHireChef:  facilityCount.restaurant > 0 && gs_cash >= C.staff.chef.cost  && (s.staff.chef  || 0) < 3,
                 canHireValet: facilityCount.parking    > 0 && gs_cash >= C.staff.valet.cost && (s.staff.valet || 0) < 3,
                 canFireChef:  (s.staff.chef  || 0) > 0,
@@ -548,6 +548,17 @@ async function tick(page, turn, logger, session) {
         logger.write({ type: 'override', turn, ...override });
         await execute(page, override);
         // Don't return — continue to LLM for the main action this turn
+    }
+
+    // ── Pre-LLM override: auto-upgrade room when affordable and target available ──
+    if (gs.affordability.canUpgradeRoom && gs.upgradeTargets.length > 0) {
+        const t = gs.upgradeTargets[0];
+        const override = { action: 'upgrade_room', params: { f: t.f, r: t.r, c: t.c }, reasoning: `[auto] Upgrade room (${t.f},${t.r},${t.c}) lvl ${t.level} → ${t.level + 1} for higher rent` };
+        console.log(`         ⚡ override → upgrade_room (${t.f},${t.r},${t.c}) lvl ${t.level}`);
+        logger.write({ type: 'override', turn, ...override });
+        session.actionCounts['upgrade_room'] = (session.actionCounts['upgrade_room'] || 0) + 1;
+        await execute(page, override);
+        return;
     }
 
     // ── Pre-LLM override: hire housekeeper when dirty rooms are backlogged ──
