@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.32] - 2026-05-26
+### Fixed
+- **`CONSTANTS is not defined` in `clampActionToAffordability`** (`ai-agent/agent.js`) — cash floor guard for `buy_material` referenced bare `CONSTANTS.buildRoomCost.cash` which is a browser global, crashing every LLM `buy_material` action at runtime; replaced with `gs.costs?.buildRoom?.cash || 1500` using the `gs` parameter already in scope; was causing 28 errors per 40-turn run and 0 rooms built (agent accumulated $13,220 purely from facility passive income while doing nothing)
+
 ## [0.3.31] - 2026-05-26
 ### Fixed
 - **Clamped-action log records** (`ai-agent/agent.js`) — 9 override records logged per run with `action=null, params=null`; clamped actions now write `type: blocked_action` with `attempted/reason/action/reasoning` fields instead of a malformed override record

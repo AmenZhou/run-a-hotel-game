@@ -467,7 +467,7 @@ function clampActionToAffordability(action, gs) {
             return { action: { action: 'wait', params: {}, reasoning: `[clamped: buy would drop cash below $300 reserve]` }, clamped: true, from: orig };
         }
         // Never buy materials that would leave too little cash to cover the next room build
-        const buildCashFloor = CONSTANTS.buildRoomCost.cash; // $1,500
+        const buildCashFloor = gs.costs?.buildRoom?.cash || 1500;
         if (cashAfterBuy < buildCashFloor) {
             return { action: { action: 'wait', params: {}, reasoning: `[clamped: buying ${action.params.amount} ${mat} (~$${Math.round(cost)}) would leave $${Math.round(cashAfterBuy)} — below $${buildCashFloor} build floor; accumulate cash first]` }, clamped: true, from: orig };
         }
