@@ -112,6 +112,8 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
   housekeeper  $30  — auto-cleans dirty rooms; without one dirty rooms never rebook
   builder      $75  — speeds up room construction
   receptionist $40  — +20% guest check-in rate per hire
+  chef         $60  — unlocks full restaurant income; each chef adds +25% (cap 3 per hotel)
+  valet        $45  — unlocks full parking income; each valet adds +25% (cap 3 per hotel)
 
 **Material base prices:** concrete $20, wood $12, steel $60. Buy when below base = good deal.
 
@@ -125,6 +127,9 @@ You are an expert AI agent playing a hotel tycoon simulation. Your ONLY goal is 
 6. **Buy materials when cheap.** Concrete/wood/steel below base price = buy in bulk.
 7. **Set speed to 4×** as soon as the hotel is stable — idle time is lost money.
 8. **Cash still matters for builds and materials.** Staff do not drain cash over time after hiring — only builds, upgrades, and material buys do.
+9. **Build 1 restaurant after 3+ guest rooms.** $0.80/s passive income beats a Lvl-1 room. Hire 1 chef right after — unlocks full rate, pays back in ~3 min at 4× speed.
+10. **Build 1 parking lot after you have a restaurant.** $0.50/s stacks with restaurant income. Hire 1 valet immediately.
+11. **Stack up to 3 chefs / 3 valets** once you have the facilities — each pays back quickly.
 
 ## Affordability rule
 
@@ -134,11 +139,11 @@ The state snapshot includes an \`affordability\` object. Each turn the user mess
 
 Return ONLY a valid JSON object — no markdown, no explanation outside the JSON:
 {
-  "action": "buy_material" | "hire_staff" | "fire_staff" | "build_room" | "upgrade_room" | "set_speed" | "wait",
+  "action": "buy_material" | "hire_staff" | "fire_staff" | "build_room" | "build_restaurant" | "build_parking" | "upgrade_room" | "set_speed" | "wait",
   "params": {
     "material": "concrete"|"wood"|"steel",              (buy_material only)
     "amount": <integer>,                                 (buy_material only)
-    "type": "housekeeper"|"builder"|"receptionist",     (hire_staff / fire_staff)
+    "type": "housekeeper"|"builder"|"receptionist"|"chef"|"valet",  (hire_staff / fire_staff)
     "f": <floor>, "r": <row>, "c": <col>,               (upgrade_room only)
     "speed": 1|2|4                                       (set_speed only)
   },
@@ -146,7 +151,11 @@ Return ONLY a valid JSON object — no markdown, no explanation outside the JSON
 }
 
 Notes:
-- build_room: takes no params — builds in the next available empty cell automatically.
+- build_room: takes no params — builds the next guest suite (respects max room cap).
+- build_restaurant / build_parking: no params — amenities on the next empty guest-floor cell (or new floor).
+  Restaurant earns $0.80/s passive income (only $0.40/s without a chef). Each chef adds +25% (max 3).
+  Parking earns $0.50/s passive income (only $0.25/s without a valet). Each valet adds +25% (max 3).
+  Both also improve walk-in booking odds. ROI beats a Lvl-1 room — build after you have 3+ guest rooms.
 - fire_staff: dismisses one staff of the given type (frees a slot; there is no ongoing wage to remove).
 - set_speed 4: do this on turn 1 or as soon as the hotel is stable — idle time is wasted money.`;
 
@@ -178,6 +187,13 @@ async function readState(page) {
                         });
                         const lk = String(cell.level);
                         byLevel[lk] = (byLevel[lk] || 0) + 1;
+                    } else if (cell.type === 'restaurant' || cell.type === 'parking') {
+                        rooms.push({
+                            f, r, c,
+                            type: cell.type,
+                            status: cell.status,
+                            buildProgress: Math.round(cell.buildProgress)
+                        });
                     } else if (cell.type === 'empty') {
                         rooms.push({ f, r, c, status: 'empty' });
                     }
@@ -186,7 +202,7 @@ async function readState(page) {
         }
 
         const upgradeTargets = rooms.filter(
-            rm => rm.status === 'ready' && !rm.occupied && (rm.level || 0) < 4
+            rm => rm.level != null && rm.status === 'ready' && !rm.occupied && rm.level < 4
         ).map(({ f, r, c, level }) => ({ f, r, c, level }));
 
         const totalWages = 0; // Game uses hire-fee-only staff — no wagesPerSec drain
@@ -199,28 +215,49 @@ async function readState(page) {
         }
 
         // Walker breakdown for guest/staff counts
-        const walkerCounts = { total: 0, guest: 0, vip: 0, housekeeper: 0, builder: 0, receptionist: 0 };
+        const walkerCounts = { total: 0, guest: 0, vip: 0, housekeeper: 0, builder: 0, receptionist: 0, chef: 0, valet: 0 };
         for (const w of (s.walkers || [])) {
             walkerCounts.total++;
             walkerCounts[w.type] = (walkerCounts[w.type] || 0) + 1;
         }
 
+        // Facility counts and passive income estimate
+        const facilityCount = { restaurant: 0, parking: 0, restaurantReady: 0, parkingReady: 0 };
+        for (const rm of rooms) {
+            if (rm.type === 'restaurant') { facilityCount.restaurant++; if (rm.status === 'ready') facilityCount.restaurantReady++; }
+            if (rm.type === 'parking')    { facilityCount.parking++;    if (rm.status === 'ready') facilityCount.parkingReady++;    }
+        }
+        const chefCount  = Math.min(3, s.staff.chef  || 0);
+        const valetCount = Math.min(3, s.staff.valet || 0);
+        const unstaffed  = C.facilityUnstaffedFactor || 0.5;
+        const restaurantPassive = facilityCount.restaurantReady * C.restaurantIncome * (chefCount  > 0 ? 1 : unstaffed) * (1 + chefCount  * 0.25);
+        const parkingPassive    = facilityCount.parkingReady    * C.parkingIncome    * (valetCount > 0 ? 1 : unstaffed) * (1 + valetCount * 0.25);
+
         const gs_cash = Math.round(s.cash);
         const materials = s.materials;
-        const costs = { buildRoom: C.buildRoomCost, upgradeRoom: C.upgradeRoomCost };
+        const costs = {
+            buildRoom: C.buildRoomCost,
+            buildRestaurant: C.buildRestaurantCost,
+            buildParking: C.buildParkingCost,
+            upgradeRoom: C.upgradeRoomCost
+        };
         const dirtyCount = rooms.filter(r => r.status === 'dirty').length;
 
         let builtCount = 0;
         let emptySlots = 0;
         for (const rm of rooms) {
             if (rm.status === 'empty') emptySlots++;
-            else if (rm.status !== 'empty') builtCount++;
+            else if (rm.level != null) builtCount++;
         }
         const guestFloors = s.hotel.length - 1;
         const canAddFloor = guestFloors < s.maxFloors;
         const canPlaceRoom = emptySlots > 0 || canAddFloor;
         const btnBuild = document.getElementById('btn-build-room');
         const buildButtonEnabled = !!(btnBuild && !btnBuild.disabled);
+        const btnRestaurant = document.getElementById('btn-build-restaurant');
+        const btnParking = document.getElementById('btn-build-parking');
+        const restaurantButtonEnabled = !!(btnRestaurant && !btnRestaurant.disabled);
+        const parkingButtonEnabled = !!(btnParking && !btnParking.disabled);
 
         return {
             cash: gs_cash,
@@ -245,13 +282,22 @@ async function readState(page) {
             },
             upgradeTargets,
             walkers: walkerCounts,
+            facilityCount,
+            facilityPassiveIncome: {
+                restaurantPerSec: Math.round(restaurantPassive * 100) / 100,
+                parkingPerSec:    Math.round(parkingPassive    * 100) / 100,
+                totalPerSec:      Math.round((restaurantPassive + parkingPassive) * 100) / 100,
+            },
             financials: {
                 wagesPerSec: totalWages,
                 estRentPerSec: Math.round(estRentPerSec * 10) / 10,
-                netPerSec: Math.round((estRentPerSec - totalWages) * 10) / 10,
+                facilityPerSec: Math.round((restaurantPassive + parkingPassive) * 10) / 10,
+                netPerSec: Math.round((estRentPerSec + restaurantPassive + parkingPassive - totalWages) * 10) / 10,
             },
             costs,
             buildButtonEnabled,
+            restaurantButtonEnabled,
+            parkingButtonEnabled,
             staffTrainingLevels: {
                 housekeeper: Math.min(C.staffTraining.maxLevel, Math.max(0, (s.staffTrainingLevels && s.staffTrainingLevels.housekeeper) | 0)),
                 builder: Math.min(C.staffTraining.maxLevel, Math.max(0, (s.staffTrainingLevels && s.staffTrainingLevels.builder) | 0)),
@@ -264,6 +310,17 @@ async function readState(page) {
                     gs_cash >= costs.buildRoom.cash &&
                     materials.concrete >= costs.buildRoom.concrete &&
                     materials.wood >= costs.buildRoom.wood,
+                canBuildRestaurant: restaurantButtonEnabled &&
+                    canPlaceRoom &&
+                    gs_cash >= costs.buildRestaurant.cash &&
+                    materials.concrete >= costs.buildRestaurant.concrete &&
+                    materials.wood >= costs.buildRestaurant.wood &&
+                    materials.steel >= costs.buildRestaurant.steel,
+                canBuildParking: parkingButtonEnabled &&
+                    canPlaceRoom &&
+                    gs_cash >= costs.buildParking.cash &&
+                    materials.concrete >= costs.buildParking.concrete &&
+                    materials.steel >= costs.buildParking.steel,
                 canUpgradeRoom: upgradeTargets.length > 0 && gs_cash >= costs.upgradeRoom.cash && materials.wood >= costs.upgradeRoom.wood && materials.steel >= costs.upgradeRoom.steel,
                 canHireHousekeeper: dirtyCount > 0 &&
                     gs_cash >= C.staff.housekeeper.cost &&
@@ -273,6 +330,10 @@ async function readState(page) {
                 canFireHousekeeper: s.staff.housekeeper > 0,
                 canFireBuilder: s.staff.builder > 0,
                 canFireReceptionist: s.staff.receptionist > 0,
+                canHireChef:  facilityCount.restaurant > 0 && gs_cash >= C.staff.chef.cost  && (s.staff.chef  || 0) < 3,
+                canHireValet: facilityCount.parking    > 0 && gs_cash >= C.staff.valet.cost && (s.staff.valet || 0) < 3,
+                canFireChef:  (s.staff.chef  || 0) > 0,
+                canFireValet: (s.staff.valet || 0) > 0,
             }
         };
     });
@@ -294,6 +355,18 @@ async function execute(page, action) {
         case 'build_room':
             await page.evaluate(() => {
                 const btn = document.getElementById('btn-build-room');
+                if (btn && !btn.disabled) btn.click();
+            });
+            break;
+        case 'build_restaurant':
+            await page.evaluate(() => {
+                const btn = document.getElementById('btn-build-restaurant');
+                if (btn && !btn.disabled) btn.click();
+            });
+            break;
+        case 'build_parking':
+            await page.evaluate(() => {
+                const btn = document.getElementById('btn-build-parking');
                 if (btn && !btn.disabled) btn.click();
             });
             break;
@@ -319,10 +392,14 @@ function validActionsThisTurn(gs) {
     const a = gs.affordability;
     const out = ['wait', 'buy_material', 'set_speed'];
     if (a.canBuildRoom) out.push('build_room');
+    if (a.canBuildRestaurant) out.push('build_restaurant');
+    if (a.canBuildParking) out.push('build_parking');
     if (a.canUpgradeRoom) out.push('upgrade_room');
     if (a.canHireHousekeeper) out.push('hire_staff (housekeeper)');
     if (a.canHireBuilder) out.push('hire_staff (builder)');
     if (a.canHireReceptionist) out.push('hire_staff (receptionist)');
+    if (a.canHireChef)  out.push('hire_staff (chef)');
+    if (a.canHireValet) out.push('hire_staff (valet)');
     if (a.canFireHousekeeper) out.push('fire_staff (housekeeper)');
     if (a.canFireBuilder) out.push('fire_staff (builder)');
     if (a.canFireReceptionist) out.push('fire_staff (receptionist)');
@@ -356,6 +433,12 @@ function clampActionToAffordability(action, gs) {
     if (orig === 'build_room' && !af.canBuildRoom) {
         return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot build]`.trim() }, clamped: true, from: orig };
     }
+    if (orig === 'build_restaurant' && !af.canBuildRestaurant) {
+        return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot build restaurant]`.trim() }, clamped: true, from: orig };
+    }
+    if (orig === 'build_parking' && !af.canBuildParking) {
+        return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot build parking]`.trim() }, clamped: true, from: orig };
+    }
     if (orig === 'upgrade_room' && !af.canUpgradeRoom) {
         return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot upgrade]`.trim() }, clamped: true, from: orig };
     }
@@ -364,7 +447,9 @@ function clampActionToAffordability(action, gs) {
         const ok =
             (t === 'housekeeper' && af.canHireHousekeeper) ||
             (t === 'builder' && af.canHireBuilder) ||
-            (t === 'receptionist' && af.canHireReceptionist);
+            (t === 'receptionist' && af.canHireReceptionist) ||
+            (t === 'chef'  && af.canHireChef) ||
+            (t === 'valet' && af.canHireValet);
         if (!ok) {
             return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot hire ${t || '?'}]`.trim() }, clamped: true, from: orig };
         }
@@ -374,7 +459,9 @@ function clampActionToAffordability(action, gs) {
         const ok =
             (t === 'housekeeper' && af.canFireHousekeeper) ||
             (t === 'builder' && af.canFireBuilder) ||
-            (t === 'receptionist' && af.canFireReceptionist);
+            (t === 'receptionist' && af.canFireReceptionist) ||
+            (t === 'chef'  && af.canFireChef) ||
+            (t === 'valet' && af.canFireValet);
         if (!ok) {
             return { action: { action: 'wait', params: {}, reasoning: `${action.reasoning || ''} [clamped: cannot fire ${t || '?'}]`.trim() }, clamped: true, from: orig };
         }
@@ -462,7 +549,7 @@ async function tick(page, turn, logger, session) {
     const raw = await askLLM(
         SYSTEM_PROMPT,
         `Game state:\n${JSON.stringify(gs, null, 2)}\n\n` +
-            `Valid actions this turn (output JSON with \"action\" exactly one of: wait, buy_material, set_speed, build_room, upgrade_room, hire_staff, fire_staff — use params as in the system prompt):\n` +
+            `Valid actions this turn (output JSON with \"action\" exactly one of: wait, buy_material, set_speed, build_room, build_restaurant, build_parking, upgrade_room, hire_staff, fire_staff — use params as in the system prompt):\n` +
             `${allowed.join(', ')}\n\n` +
             `What single action maximizes my cash? Reply with one JSON action.`
     );
@@ -509,7 +596,7 @@ async function tick(page, turn, logger, session) {
     await execute(page, action);
 
     // Verify build/upgrade actually changed state (log silent no-ops)
-    if (action.action === 'build_room' || action.action === 'upgrade_room') {
+    if (action.action === 'build_room' || action.action === 'build_restaurant' || action.action === 'build_parking' || action.action === 'upgrade_room') {
         const gsAfter = await readState(page);
         if (gsAfter) {
             if (action.action === 'build_room') {
@@ -519,6 +606,14 @@ async function tick(page, turn, logger, session) {
                 else {
                     console.log(`         ⛔ build_room had no effect (button disabled or grid full)`);
                     logger.write({ type: 'blocked_action', turn, attempted: 'build_room', params: action.params || {}, reason: 'no_effect' });
+                }
+            }
+            if (action.action === 'build_restaurant' || action.action === 'build_parking') {
+                const progressed = gsAfter.roomSummary.total > roomsTotalBefore ||
+                    gsAfter.roomSummary.building > buildingBefore;
+                if (!progressed) {
+                    console.log(`         ⛔ ${action.action} had no effect`);
+                    logger.write({ type: 'blocked_action', turn, attempted: action.action, params: action.params || {}, reason: 'no_effect' });
                 }
             }
             if (action.action === 'upgrade_room') {

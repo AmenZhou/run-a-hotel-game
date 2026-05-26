@@ -47,14 +47,19 @@ function simulationStep() {
         for (let r = 0; r < GRID_ROWS; r++) {
             for (let c = 0; c < GRID_COLS; c++) {
                 const cell = state.hotel[f][r][c];
-                if (cell.type === 'guest' && cell.status === 'building') {
+                const passiveBuildTypes = ['guest', 'restaurant', 'parking'];
+                if (passiveBuildTypes.includes(cell.type) && cell.status === 'building') {
                     cell.buildProgress = Math.min(100, cell.buildProgress + 3 * state.gameSpeed);
                     if (cell.buildProgress >= 100) {
                         cell.buildProgress = 100;
                         cell.status = 'ready';
                         AudioEngine.playUpgrade();
                         populateUpgradeSelect();
-                        showToast("Construction Complete!", `Suite on Floor ${f} is ready for guests!`, 'success');
+                        let msg = `Structure on Floor ${f} is ready.`;
+                        if (cell.type === 'guest') msg = `Suite on Floor ${f} is ready for guests!`;
+                        else if (cell.type === 'restaurant') msg = `Restaurant on Floor ${f} is open!`;
+                        else if (cell.type === 'parking') msg = `Parking on Floor ${f} is ready!`;
+                        showToast("Construction Complete!", msg, 'success');
                     }
                 }
             }
@@ -63,6 +68,59 @@ function simulationStep() {
 
     // Handle idle reception desk checks
     triggerGuestBooking();
+
+    // Passive income from ready restaurants and parking lots
+    {
+        if (!state.facilityIncomeAccum) state.facilityIncomeAccum = { restaurant: 0, parking: 0 };
+        if (!state.facilityEarningToasted) state.facilityEarningToasted = new Set();
+
+        const chefCount = Math.min(3, state.staff.chef || 0);
+        const valetCount = Math.min(3, state.staff.valet || 0);
+        const unstaffed = CONSTANTS.facilityUnstaffedFactor;
+        const restaurantStaffFactor = chefCount > 0 ? 1.0 : unstaffed;
+        const parkingStaffFactor    = valetCount > 0 ? 1.0 : unstaffed;
+        const restaurantMultiplier  = restaurantStaffFactor * (1 + chefCount * 0.25);
+        const parkingMultiplier     = parkingStaffFactor    * (1 + valetCount * 0.25);
+
+        for (let f = 1; f < state.hotel.length; f++) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    const cell = state.hotel[f][r][c];
+                    if (cell.status !== 'ready') continue;
+                    if (cell.type === 'restaurant') {
+                        const income = CONSTANTS.restaurantIncome * restaurantMultiplier * state.gameSpeed;
+                        state.facilityIncomeAccum.restaurant += income;
+                        if (!state.facilityEarningToasted.has(cell.id)) {
+                            state.facilityEarningToasted.add(cell.id);
+                            const rate = chefCount > 0 ? CONSTANTS.restaurantIncome.toFixed(2) : (CONSTANTS.restaurantIncome * unstaffed).toFixed(2);
+                            const tip = chefCount > 0 ? '' : ' Hire a Chef to unlock full rate.';
+                            showToast('Restaurant Open!', `Floor ${f} diner earning $${rate}/s.${tip}`, 'success');
+                        }
+                    } else if (cell.type === 'parking') {
+                        const income = CONSTANTS.parkingIncome * parkingMultiplier * state.gameSpeed;
+                        state.facilityIncomeAccum.parking += income;
+                        if (!state.facilityEarningToasted.has(cell.id)) {
+                            state.facilityEarningToasted.add(cell.id);
+                            const rate = valetCount > 0 ? CONSTANTS.parkingIncome.toFixed(2) : (CONSTANTS.parkingIncome * unstaffed).toFixed(2);
+                            const tip = valetCount > 0 ? '' : ' Hire a Valet to unlock full rate.';
+                            showToast('Parking Ready!', `Floor ${f} lot earning $${rate}/s.${tip}`, 'success');
+                        }
+                    }
+                }
+            }
+        }
+
+        if (state.facilityIncomeAccum.restaurant >= 1) {
+            const earned = Math.floor(state.facilityIncomeAccum.restaurant);
+            state.cash += earned;
+            state.facilityIncomeAccum.restaurant -= earned;
+        }
+        if (state.facilityIncomeAccum.parking >= 1) {
+            const earned = Math.floor(state.facilityIncomeAccum.parking);
+            state.cash += earned;
+            state.facilityIncomeAccum.parking -= earned;
+        }
+    }
 
     // Decrement AI Campaign active timer
     if (state.campaignActive) {
@@ -78,13 +136,34 @@ function simulationStep() {
         }
     }
 
-    // Ledger: rent estimate only — staff use one-time hire fees (no /sec payroll)
-    const netFlow = totalRent;
+    // Ledger: rent estimate + facility passive income
     const lRent = document.getElementById('ledger-rent');
     if (lRent) lRent.innerText = `~+$${totalRent.toFixed(2)}/sec`;
     const lWages = document.getElementById('ledger-wages');
     if (lWages) lWages.innerText = '— (hire fee only)';
 
+    // Calculate current facility income rate for display
+    let facilityPerSec = 0;
+    {
+        const cc = Math.min(3, state.staff.chef || 0);
+        const vc = Math.min(3, state.staff.valet || 0);
+        const rf = cc > 0 ? 1.0 : CONSTANTS.facilityUnstaffedFactor;
+        const pf = vc > 0 ? 1.0 : CONSTANTS.facilityUnstaffedFactor;
+        for (let f = 1; f < state.hotel.length; f++) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    const cell = state.hotel[f][r][c];
+                    if (cell.status !== 'ready') continue;
+                    if (cell.type === 'restaurant') facilityPerSec += CONSTANTS.restaurantIncome * rf * (1 + cc * 0.25);
+                    else if (cell.type === 'parking') facilityPerSec += CONSTANTS.parkingIncome * pf * (1 + vc * 0.25);
+                }
+            }
+        }
+    }
+    const lFacility = document.getElementById('ledger-facility');
+    if (lFacility) lFacility.innerText = `+$${facilityPerSec.toFixed(2)}/sec`;
+
+    const netFlow = totalRent + facilityPerSec;
     const netEl = document.getElementById('ledger-net');
     if (netEl) {
         netEl.innerText = `${netFlow >= 0 ? '+' : ''}$${netFlow.toFixed(2)}/sec`;
@@ -92,6 +171,20 @@ function simulationStep() {
     }
 
     updateUI();
+}
+
+/** True if we can place another structure on guest floors (empty cell or new floor under cap). */
+function hasStructuralBuildSlot() {
+    for (let f = 1; f < state.hotel.length; f++) {
+        for (let r = 0; r < GRID_ROWS; r++) {
+            for (let c = 0; c < GRID_COLS; c++) {
+                if (r === ELEVATOR_R && c === ELEVATOR_C) continue;
+                if (state.hotel[f][r][c].type === 'empty') return true;
+            }
+        }
+    }
+    const guestFloors = state.hotel.length - 1;
+    return guestFloors < state.maxFloors;
 }
 
 function getHotelRating() {
@@ -201,6 +294,10 @@ function updateUI() {
     if (stBld) stBld.innerText = state.staff.builder;
     const stRec = document.getElementById('staff-receptionist-count');
     if (stRec) stRec.innerText = state.staff.receptionist;
+    const stChef = document.getElementById('staff-chef-count');
+    if (stChef) stChef.innerText = state.staff.chef || 0;
+    const stValet = document.getElementById('staff-valet-count');
+    if (stValet) stValet.innerText = state.staff.valet || 0;
 
     const stMax = CONSTANTS.staffTraining.maxLevel;
     const bindTraining = (job, labelId, costId, btnId) => {
@@ -223,12 +320,30 @@ function updateUI() {
     bindTraining('builder', 'bld-training-label', 'bld-upgrade-cost', 'btn-upgrade-bld');
     bindTraining('receptionist', 'rec-training-label', 'rec-upgrade-cost', 'btn-upgrade-rec');
 
-    const canBuild = state.cash >= CONSTANTS.buildRoomCost.cash &&
+    const canBuild = hasStructuralBuildSlot() &&
+                     state.cash >= CONSTANTS.buildRoomCost.cash &&
                      state.materials.concrete >= CONSTANTS.buildRoomCost.concrete &&
                      state.materials.wood >= CONSTANTS.buildRoomCost.wood &&
                      cap.built < state.maxRooms;
     const btnBuild = document.getElementById('btn-build-room');
     if (btnBuild) btnBuild.disabled = !canBuild;
+
+    const br = CONSTANTS.buildRestaurantCost;
+    const canRestaurant = hasStructuralBuildSlot() &&
+        state.cash >= br.cash &&
+        state.materials.concrete >= br.concrete &&
+        state.materials.wood >= br.wood &&
+        state.materials.steel >= br.steel;
+    const btnRest = document.getElementById('btn-build-restaurant');
+    if (btnRest) btnRest.disabled = !canRestaurant;
+
+    const bp = CONSTANTS.buildParkingCost;
+    const canParking = hasStructuralBuildSlot() &&
+        state.cash >= bp.cash &&
+        state.materials.concrete >= bp.concrete &&
+        state.materials.steel >= bp.steel;
+    const btnPark = document.getElementById('btn-build-parking');
+    if (btnPark) btnPark.disabled = !canParking;
 }
 
 function populateUpgradeSelect() {
@@ -388,36 +503,77 @@ function setupTabs() {
     });
 }
 
+function resolveNextGuestFloorBuildTarget() {
+    let target = null;
+    for (let f = 1; f < state.hotel.length; f++) {
+        for (let r = 0; r < GRID_ROWS; r++) {
+            for (let c = 0; c < GRID_COLS; c++) {
+                if (r === ELEVATOR_R && c === ELEVATOR_C) continue;
+                if (state.hotel[f][r][c].type === 'empty') {
+                    target = { f, r, c };
+                    break;
+                }
+            }
+            if (target) break;
+        }
+    }
+    if (!target) {
+        const guestFloors = state.hotel.length - 1;
+        if (guestFloors >= state.maxFloors) return null;
+        addFloor();
+        target = { f: state.hotel.length - 1, r: 0, c: 0 };
+        showToast(`Floor ${target.f} Unlocked!`, `New guest floor added — ${state.maxFloors - guestFloors - 1} floor expansion(s) remaining.`, 'success');
+    }
+    return target;
+}
+
+function placeFacilityBuild(type, cost, label) {
+    const target = resolveNextGuestFloorBuildTarget();
+    if (!target) {
+        showToast("Floor Limit Reached!", `Maximum ${state.maxFloors} guest floors — hotel fully expanded!`, 'warning');
+        return;
+    }
+    if (state.cash < cost.cash ||
+        state.materials.concrete < cost.concrete ||
+        (cost.wood != null && state.materials.wood < cost.wood) ||
+        (cost.steel != null && state.materials.steel < cost.steel)) {
+        showToast('Insufficient Resources', 'Not enough cash or materials to build.', 'warning');
+        return;
+    }
+    state.cash -= cost.cash;
+    state.materials.concrete -= cost.concrete;
+    if (cost.wood != null) state.materials.wood -= cost.wood;
+    if (cost.steel != null) state.materials.steel -= cost.steel;
+
+    state.hotel[target.f][target.r][target.c] = {
+        type,
+        level: 1,
+        status: 'building',
+        buildProgress: 0,
+        cleanliness: 100,
+        guestId: null,
+        id: `F${target.f}R${target.r}C${target.c}`
+    };
+
+    AudioEngine.playBuild();
+    showToast("Construction Approved!", `${label} at Floor ${target.f} [Grid ${target.r},${target.c}].`, 'success');
+    updateUI();
+}
+
 // Expand Room Blueprint Event
 const btnBuild = document.getElementById('btn-build-room');
 if (btnBuild) {
     btnBuild.addEventListener('click', () => {
-        let target = null;
-        for (let f = 1; f < state.hotel.length; f++) {
-            for (let r = 0; r < GRID_ROWS; r++) {
-                for (let c = 0; c < GRID_COLS; c++) {
-                    if (r === ELEVATOR_R && c === ELEVATOR_C) continue; // elevator shaft — no rooms here
-                    if (state.hotel[f][r][c].type === 'empty') {
-                        target = { f, r, c };
-                        break;
-                    }
-                }
-                if (target) break;
-            }
-            if (target) break;
+        const cap = getRoomCapacity();
+        if (cap.built >= state.maxRooms) {
+            showToast('Room cap', 'You are at maximum guest suites — upgrade or wait.', 'warning');
+            return;
         }
-
+        const target = resolveNextGuestFloorBuildTarget();
         if (!target) {
-            const guestFloors = state.hotel.length - 1; // floor 0 is lobby
-            if (guestFloors >= state.maxFloors) {
-                showToast("Floor Limit Reached!", `Maximum ${state.maxFloors} guest floors — hotel fully expanded!`, 'warning');
-                return;
-            }
-            addFloor();
-            target = { f: state.hotel.length - 1, r: 0, c: 0 };
-            showToast(`Floor ${target.f} Unlocked!`, `New guest floor added — ${state.maxFloors - guestFloors - 1} floor expansion(s) remaining.`, 'success');
+            showToast("Floor Limit Reached!", `Maximum ${state.maxFloors} guest floors — hotel fully expanded!`, 'warning');
+            return;
         }
-
         if (state.cash < CONSTANTS.buildRoomCost.cash ||
             state.materials.concrete < CONSTANTS.buildRoomCost.concrete ||
             state.materials.wood < CONSTANTS.buildRoomCost.wood) {
@@ -439,8 +595,21 @@ if (btnBuild) {
         };
 
         AudioEngine.playBuild();
-        showToast("Construction Approved!", `Laying foundation columns at Floor ${target.f} [Grid ${target.r},${target.c}].`, "success");
+        showToast("Construction Approved!", `Laying foundation columns at Floor ${target.f} [Grid ${target.r},${target.c}].`, 'success');
         updateUI();
+    });
+}
+
+const btnBuildRestaurant = document.getElementById('btn-build-restaurant');
+if (btnBuildRestaurant) {
+    btnBuildRestaurant.addEventListener('click', () => {
+        placeFacilityBuild('restaurant', CONSTANTS.buildRestaurantCost, 'Restaurant');
+    });
+}
+const btnBuildParking = document.getElementById('btn-build-parking');
+if (btnBuildParking) {
+    btnBuildParking.addEventListener('click', () => {
+        placeFacilityBuild('parking', CONSTANTS.buildParkingCost, 'Parking deck');
     });
 }
 
@@ -699,7 +868,7 @@ window.startNewGame = function (silent = false) {
     state.cash = STARTING_CASH;
     state.materials = { concrete: 50, wood: 35, steel: 15 };
     state.marketPrices = { concrete: 20, wood: 12, steel: 60 };
-    state.staff = { housekeeper: 0, receptionist: 0, builder: 0 };
+    state.staff = { housekeeper: 0, receptionist: 0, builder: 0, chef: 0, valet: 0 };
     state.walkers = [];
     state.particles = [];
     state.gameSpeed = 1;
@@ -714,9 +883,11 @@ window.startNewGame = function (silent = false) {
     state.panX = 0;
     state.panY = 0;
     state.fun = { checkouts: 0, tipsTotal: 0, rushHourTicks: 0, lastCheckoutAt: 0 };
-    state.staffTrainingLevels = { housekeeper: 0, builder: 0, receptionist: 0 };
+    state.staffTrainingLevels = { housekeeper: 0, builder: 0, receptionist: 0, chef: 0, valet: 0 };
     state.hotelOwner = { name: 'Jordan Blake', title: 'Proprietor', animFrame: 0 };
     initHotel();
+    // Spawn owner as a walkable entity (click-to-move in Inside view)
+    spawnOwnerWalker(0, 0.5, 0.5);
     populateUpgradeSelect();
     updateUI();
     if (!silent) showToast('New Game', 'Your hotel has been reset. Good luck!', 'success');
@@ -755,8 +926,11 @@ window.onload = function () {
     // Restore from save if one exists, otherwise start fresh
     if (hasSave() && loadGame()) {
         // loadGame() re-spawns walkers from saved staff counts — no free starter hires
+        // loadGame also ensures owner walker is present
     } else {
         initHotel();
+        // Spawn owner walker for a fresh game (no save file)
+        spawnOwnerWalker(0, 0.5, 0.5);
     }
     Room3DRenderer.init();
     CanvasRenderer.init('game-canvas');

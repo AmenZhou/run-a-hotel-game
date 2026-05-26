@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.23] - 2026-05-26
+### Changed
+- **Restaurant income raised** — base $0.80/s (was $0.30/s); half-rate ($0.40/s) when no Chef is on staff, full rate requires ≥1 Chef; up to 3 Chefs add +25% each (max +75%).
+- **Parking income raised** — base $0.50/s (was $0.20/s); half-rate ($0.25/s) without a Valet; same 3-valet cap/multiplier.
+- **`CONSTANTS.facilityUnstaffedFactor`** — new constant (0.5) controls the unstaffed income penalty; first-earn toasts now mention the reduced rate and suggest hiring staff.
+- **Ledger "Amenity Income" row** — Management tab Operating Statement now shows facility passive $/s separately (🍽 🅿️ line above Net Flow).
+- **Build card descriptions** — Restaurant and Parking lot cards now show exact income rates and staff requirements.
+### Fixed
+- **Save/load room cap** — `loadGame` now enforces `maxRooms ≥ 100` and `maxFloors ≥ 20` so old saves cannot revert to smaller limits.
+### Agent (`ai-agent/agent.js`)
+- **Chef & Valet in system prompt** — staff table, hire_staff params, and Notes section updated.
+- **Restaurant/parking strategy rules** — three new numbered priorities (9–11) with ROI guidance.
+- **`readState` expansion** — exposes `facilityCount`, `facilityPassiveIncome`, `financials.facilityPerSec`; chef/valet added to walkerCounts.
+- **Affordability guards** — `canHireChef` / `canHireValet` (require matching facility, cap at 3); `canFireChef` / `canFireValet`; clamping and valid-actions list updated.
+
+## [0.3.22] - 2026-05-25
+### Added
+- **Restaurant & parking builds** — Build tab adds **Approve Restaurant Build** and **Approve Parking Lot** amenities on the same guest-floor grid as suites (next empty cell or new floor), with material costs in `CONSTANTS.buildRestaurantCost` / `buildParkingCost`. They construct like suites (`building` → `ready`), respond to **builders** and **click-to-assist**, render in **Inside / Exterior** views, are **walkable in manager mode**, and each ready facility adds a small **walk-in booking** bonus (capped) in `triggerGuestBooking`.
+
 ## [0.3.21] - 2026-05-25
 ### Added
 - **360° isometric orbit** — In **Inside** and **Exterior** views, spin the hotel continuously: **right-drag** or **Alt+left-drag** on the canvas (same `isoYaw` as ⟲ ⟳), plus **Shift+mouse wheel** for stepped rotation. Context menu suppressed on the canvas while in those views so right-drag doesn’t open the browser menu.
