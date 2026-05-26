@@ -510,6 +510,8 @@ function clampActionToAffordability(action, gs) {
 async function tick(page, turn, logger, session) {
     const gs = await readState(page);
     if (!gs) { console.warn('[agent] State unavailable, skipping'); return; }
+    const C = await page.evaluate(() => window.CONSTANTS);
+    if (!C) { console.warn('[agent] CONSTANTS unavailable, skipping'); return; }
 
     const cashDelta = session.lastCash !== null ? gs.cash - session.lastCash : 0;
     session.lastCash = gs.cash;

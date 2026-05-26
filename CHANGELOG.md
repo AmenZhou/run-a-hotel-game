@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.28] - 2026-05-26
+### Fixed
+- **`C is not defined` crash in tick handler** (`ai-agent/agent.js`) — `window.CONSTANTS` was scoped inside `readState()` but referenced at lines 661/673 in `tick()` for chef/valet stack overrides; crashed 80% of ticks (32/40), silencing the LLM completely after T6; fix: read `C` at the top of `tick()`
+
 ## [0.3.27] - 2026-05-26
 ### Fixed
 - **Booking probability cap** (`js/simulation.js`) — clamp `finalChance` to 0.95 max; prevents 3-receptionist + campaign from always booking (chance was hitting 1.22), making campaigns and rush hour actually matter
