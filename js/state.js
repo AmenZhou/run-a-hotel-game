@@ -256,8 +256,46 @@ function deleteSave() {
 function hasSave() {
     return !!localStorage.getItem(SAVE_KEY);
 }
+
+function exportSave() {
+    saveGame(); // flush current state first
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) { showToast('Nothing to Export', 'Save the game first.', 'warning'); return; }
+    const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-');
+    const filename = `grand-hotel-${ts}.json`;
+    const blob = new Blob([raw], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    showToast('Save Exported!', `Downloaded as ${filename}`, 'success');
+}
+
+function importSave(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            JSON.parse(e.target.result); // validate JSON before writing
+            localStorage.setItem(SAVE_KEY, e.target.result);
+            if (loadGame()) {
+                showToast('Save Imported!', 'Your hotel has been restored.', 'success');
+                updateUI();
+            }
+        } catch {
+            showToast('Import Failed', 'File is not a valid save.', 'error');
+        }
+    };
+    reader.readAsText(file);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Expose on window for cross-file access
 window.state      = state;
 window.addFloor   = addFloor;
+window.saveGame   = saveGame;
+window.loadGame   = loadGame;
+window.deleteSave = deleteSave;
+window.hasSave    = hasSave;
+window.exportSave = exportSave;
+window.importSave = importSave;

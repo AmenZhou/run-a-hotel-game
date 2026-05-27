@@ -372,7 +372,7 @@ window.saveHotelOwnerProfile = function () {
 
 document.getElementById('btn-owner-save')?.addEventListener('click', () => window.saveHotelOwnerProfile());
 
-// Save / Load / New Game button handlers
+// Save / Load / Export / Import / New Game button handlers
 document.getElementById('btn-save')?.addEventListener('click', () => saveGame());
 document.getElementById('btn-load')?.addEventListener('click', () => {
     if (loadGame()) {
@@ -380,6 +380,15 @@ document.getElementById('btn-load')?.addEventListener('click', () => {
         populateUpgradeSelect();
         updateUI();
     }
+});
+document.getElementById('btn-export')?.addEventListener('click', () => exportSave());
+document.getElementById('btn-import')?.addEventListener('click', () => {
+    document.getElementById('import-file').value = '';
+    document.getElementById('import-file').click();
+});
+document.getElementById('import-file')?.addEventListener('change', e => {
+    const file = e.target.files?.[0];
+    if (file) importSave(file);
 });
 document.getElementById('btn-new-game')?.addEventListener('click', () => {
     if (!confirm('Start a new game? Your current progress will be lost.')) return;
